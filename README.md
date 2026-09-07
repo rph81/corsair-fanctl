@@ -93,11 +93,12 @@ journalctl -u corsair-fanctl -f
 ```
 
 The unit is deliberately **not** ordered after `network-online.target`. Fan
-control should not wait for networking: the HTTP server binds `0.0.0.0`, which
-succeeds before any interface is configured, and if `http.bind` is pinned to an
-address that does not exist yet the process simply exits and `Restart=` brings
-it back. Gating on the network would leave the fans unmanaged — sitting at the
-80% shutdown failsafe — for however long `network-online.target` takes.
+control should not wait for networking: the control loop starts before the
+HTTP server, and if the port is busy or `http.bind` is pinned to an address
+that does not exist yet, the daemon keeps driving the fans and retries the bind
+every 5 s (using `IP_FREEBIND`, so a not-yet-configured address binds anyway).
+Gating on the network would leave the fans unmanaged — sitting at the 80%
+shutdown failsafe — for however long `network-online.target` takes.
 
 `StartLimitIntervalSec=0` disables systemd's start-rate limit, so a fan
 controller can never be parked in a failed state and stop managing the fans.
@@ -156,10 +157,12 @@ Each tick, per channel:
 |---|---|
 | No sensor selected for a channel | Failsafe duty (default 80%) |
 | Selected sensors all disappear | Failsafe duty, channel flagged in the UI |
-| A channel's sensors reach the emergency temperature (default 85 °C) | That channel jumps straight to 100%, ignoring hysteresis and ramp limits |
+| Any one of a channel's sensors reaches the emergency temperature (default 85 °C), regardless of the mix setting | That channel jumps straight to the emergency duty, ignoring hysteresis and ramp limits |
 | The service stops or the host shuts down | All channels set to the failsafe duty |
 | The device unplugs or re-enumerates | Reconnect is retried every 5 s; fans hold their last duty meanwhile |
 | The service crashes | The Commander Pro holds the last duty it was given |
+| The config file cannot be parsed | It is moved aside as `config.json.corrupt-<time>`, the daemon starts with defaults (every fan at the failsafe duty) and the UI shows a banner |
+| The web UI port cannot be bound | Fan control runs anyway; the bind is retried every 5 s |
 
 Emergency response is **per channel**, based on that channel's own sensors. If
 you want a CPU over-temperature to spin up every fan, add the CPU sensor to
@@ -202,9 +205,9 @@ adopts them as long as you have no unsaved edits.
   "control": {
     "backend": "auto",         // auto | hwmon | liquidctl
     "interval": 2.0,           // seconds between control ticks
-    "failsafe_duty": 80,
+    "failsafe_duty": 80,       // 20-100
     "emergency_temp": 85.0,
-    "emergency_duty": 100,
+    "emergency_duty": 100,     // 50-100, and never below failsafe_duty
     "apply_failsafe_on_exit": true,
     "reassert_seconds": 30.0   // re-send duties periodically
   },
@@ -322,7 +325,7 @@ web UI and in every fan's temperature source list, so a drive-cage fan can
 follow the drives it is actually cooling:
 
 ```bash
-curl -X POST localhost:8899/api/fan/3 \
+curl -X POST -H 'Content-Type: application/json' localhost:8899/api/fan/3 \
   -d '{"name":"Drive cage","sensors":["arcconf:1:max"],
        "curve":[[35,20],[40,35],[45,60],[50,85],[55,100]]}'
 ```
@@ -417,6 +420,12 @@ To bind to localhost only and reach it over an SSH tunnel, set
 
 All routes are JSON. `/healthz` is the only one that skips authentication.
 
+`POST` and `PUT` bodies **must** be sent with `Content-Type: application/json`,
+and a request carrying an `Origin` header from another site is refused with
+403. That is what stops a random web page open in a browser on your LAN from
+turning the fans off through the unauthenticated API; the web UI and `curl`
+with the header shown below are unaffected.
+
 | Method | Path | Purpose |
 |---|---|---|
 | `GET` | `/api/state` | Live snapshot: temps, RPM, duties, per-channel reason, sensor catalog, config |
@@ -430,10 +439,10 @@ All routes are JSON. `/healthz` is the only one that skips authentication.
 
 ```bash
 # Put the drive-cage fan on a fixed 35%
-curl -X POST localhost:8899/api/fan/3 -d '{"mode":"fixed","fixed_duty":35}'
+curl -X POST -H 'Content-Type: application/json' localhost:8899/api/fan/3 -d '{"mode":"fixed","fixed_duty":35}'
 
 # Point fan 2 at both a probe and the CPU, following whichever is hotter
-curl -X POST localhost:8899/api/fan/2 \
+curl -X POST -H 'Content-Type: application/json' localhost:8899/api/fan/2 \
   -d '{"sensors":["cpro:temp1","hwmon:coretemp:temp1"],"mix":"max"}'
 ```
 
