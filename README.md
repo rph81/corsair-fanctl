@@ -1,8 +1,10 @@
-# corsair-fanctl
+# Corsair Fan Control for Proxmox
 
 [![tests](https://github.com/rph81/corsair-fanctl/actions/workflows/test.yml/badge.svg)](https://github.com/rph81/corsair-fanctl/actions/workflows/test.yml)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![python: 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/)
+
+*Package and service name: `corsair-fanctl`*
 
 Fan control for the **Corsair Commander Pro**, with temperature curves and a web
 UI, built to run on a Proxmox VE host. It does what iCUE does for fans — and
