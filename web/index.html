@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Commander Pro · Fan Control</title>
+<link rel="stylesheet" href="/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='13' font-size='13'>🌀</text></svg>">
+</head>
+<body>
+
+<header>
+  <h1>Commander Pro</h1>
+  <div class="status">
+    <span class="dot" id="conn-dot"></span>
+    <span id="conn-text">connecting…</span>
+  </div>
+  <div class="rails" id="rails"></div>
+  <div class="spacer"></div>
+  <button id="btn-settings">Settings</button>
+  <button id="btn-revert" disabled>Revert</button>
+  <button id="btn-apply" class="primary" disabled>Apply changes</button>
+</header>
+
+<p class="banner" id="banner" hidden></p>
+
+<main>
+  <div class="grid" id="fans"></div>
+
+  <section class="card storage-card" id="storage-card" hidden>
+    <div class="chart-head">
+      <h2>Storage</h2>
+      <span class="tag" id="storage-state">—</span>
+      <div class="spacer"></div>
+      <span class="muted-note" id="storage-age"></span>
+      <button id="btn-storage-refresh">Refresh now</button>
+    </div>
+    <p class="banner inline" id="storage-error" hidden></p>
+    <div class="table-scroll">
+      <table class="disks" id="disks">
+        <thead>
+          <tr>
+            <th>Slot</th><th>Device</th><th>Model</th><th>Serial</th>
+            <th class="num">Temp</th><th class="num">Peak</th><th class="num">Limit</th>
+            <th class="num">Life</th><th class="num">Hours</th><th>Health</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p class="curve-help">
+      Each drive is also a temperature source: pick it in any fan's
+      <em>Temperature sources</em> list, or use <em>Hottest drive</em> to follow
+      whichever drive is warmest.
+    </p>
+  </section>
+
+  <section class="card chart-card">
+    <div class="chart-head">
+      <h2>History</h2>
+      <div class="spacer"></div>
+      <select id="chart-range">
+        <option value="300">5 minutes</option>
+        <option value="900" selected>15 minutes</option>
+        <option value="3600">1 hour</option>
+        <option value="21600">6 hours</option>
+      </select>
+    </div>
+    <canvas id="chart"></canvas>
+    <div class="legend" id="legend"></div>
+  </section>
+</main>
+
+<dialog id="settings">
+  <h2>Global settings</h2>
+
+  <div class="row">
+    <div class="field">
+      <label>Theme</label>
+      <div class="seg" id="theme-seg">
+        <button type="button" data-theme-value="dark">Dark</button>
+        <button type="button" data-theme-value="light">Light</button>
+        <button type="button" data-theme-value="system">System</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="field">
+      <label>Accent colour</label>
+      <div class="swatches" id="accent-presets"></div>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="field">
+      <label for="accent-picker">Custom colour</label>
+      <div class="picker-row">
+        <input type="color" id="accent-picker">
+        <input type="text" id="accent-hex" class="hex" maxlength="7" spellcheck="false">
+        <button type="button" id="btn-fav-add">Save to favourites</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="field">
+      <label>Favourites <span class="hint-text" id="fav-count"></span></label>
+      <div class="swatches" id="accent-favorites"></div>
+    </div>
+  </div>
+
+  <hr style="border:none;border-top:1px solid var(--line);margin:18px 0">
+
+  <div class="row">
+    <div class="field">
+      <label for="set-interval">Poll interval (s)</label>
+      <input type="number" id="set-interval" min="0.5" max="60" step="0.5">
+    </div>
+    <div class="field">
+      <label for="set-backend">Device backend</label>
+      <select id="set-backend">
+        <option value="auto">auto</option>
+        <option value="hwmon">hwmon (kernel driver)</option>
+        <option value="liquidctl">liquidctl (USB HID)</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="field">
+      <label for="set-failsafe">Failsafe duty (%)</label>
+      <input type="number" id="set-failsafe" min="0" max="100" step="1">
+    </div>
+    <div class="field">
+      <label for="set-emerg-temp">Emergency temp (°C)</label>
+      <input type="number" id="set-emerg-temp" min="30" max="120" step="1">
+    </div>
+    <div class="field">
+      <label for="set-emerg-duty">Emergency duty (%)</label>
+      <input type="number" id="set-emerg-duty" min="0" max="100" step="1">
+    </div>
+  </div>
+  <p class="hint-text">
+    Failsafe applies when a fan's sensors go missing, and on service shutdown.
+    Emergency overrides the curve the moment a fan's own sensors reach the limit.
+  </p>
+
+  <div class="row">
+    <div class="field">
+      <label><input type="checkbox" id="set-exit-failsafe"> Apply failsafe duty when the service stops</label>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="field">
+      <label for="set-history">History retained (s)</label>
+      <input type="number" id="set-history" min="60" max="86400" step="60">
+    </div>
+    <div class="field">
+      <label for="set-reassert">Re-assert duties every (s)</label>
+      <input type="number" id="set-reassert" min="0" max="3600" step="5">
+    </div>
+  </div>
+
+  <p class="hint-text">
+    Listen address and port live in the config file and need a service restart:
+    <code id="listen-info"></code>
+  </p>
+
+  <footer>
+    <button id="btn-reconnect">Reconnect device</button>
+    <div class="spacer" style="flex:1"></div>
+    <button id="settings-close">Done</button>
+  </footer>
+</dialog>
+
+<div class="toast" id="toast"></div>
+
+<script src="/app.js"></script>
+</body>
+</html>

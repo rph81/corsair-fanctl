@@ -1,0 +1,137 @@
+Controllers found: 1
+----------------------------------------------------------------------
+Physical Device information
+----------------------------------------------------------------------
+   Channel #0:
+      Device #0
+         Device is a Hard drive
+         State                                           : Raw (Pass Through)
+         Drive has stale RIS data                        : False
+         Disk Name                                       : /dev/sda (Disk0) (Bus: 0, Target: 0, Lun: 0)
+         Block Size                                      : 512 Bytes
+         Physical Block Size                             : 4K Bytes
+         Negotiated Transfer Speed                       : SAS 12.0 Gb/s
+         Reported Channel,Device(T:L)                    : 0,0(0:0)
+         Reported Location                               : Direct Attached, Slot 1(Connector 0:CN0)
+         Vendor                                          : SAMSUNG
+         Model                                           : MZILT800HBHQ0D3
+         Firmware                                        : DWA4
+         Serial number                                   : EXAMPLESERIAL001
+         World-wide name                                 : 5000000000000001
+         Reserved Size                                   : 32768 KB
+         Total Size                                      : 763097 MB
+         Write Cache                                     : Disabled (write-through)
+         S.M.A.R.T.                                      : Supported
+         S.M.A.R.T. warnings                             : No
+         SSD                                             : Yes
+         Boot Type                                       : None
+         Current Temperature                             : 40 deg C
+         Maximum Temperature                             : 45 deg C
+         Threshold Temperature                           : 74 deg C
+         PHY Count                                       : 2
+         Drive Configuration Type                        : HBA
+         Mount Point(s)                                  : Not Mounted
+         Drive Exposed to OS                             : True
+         Power On Hours                                  : 43822
+         Usage Remaining                                 : 63 percent
+         Estimated Life Remaining                        : 3108 day(s)
+         SSD Smart Trip Wearout                          : False
+         Drive Unique ID                                 : 5000000000000000
+         Last Failure Reason                             : No Failure
+      ----------------------------------------------------------------
+      Device Phy Information
+      ----------------------------------------------------------------
+         Phy #0
+            Physical Link Rate                           : 12 Gbps
+            Logical Link Rate                            : 12 Gbps
+            Maximum Link Rate                            : 12 Gbps
+         Phy #1
+            Physical Link Rate                           : unknown
+            Logical Link Rate                            : unknown
+            Maximum Link Rate                            : 12 Gbps
+
+      ----------------------------------------------------------------
+      Device Error Counters
+      ----------------------------------------------------------------
+         Aborted Commands                                : 0
+         Bad Target Errors                               : 0
+         Hardware Errors                                 : 0
+         Media Failures                                  : 0
+         Predictive Failures                             : 0
+         Sectors Reads                                   : 1678
+         Sectors Written                                 : 0
+         Service Hours                                   : 97
+         Marked Bad Blocks                               : 0
+
+      Device #1
+         Device is a Hard drive
+         State                                           : Raw (Pass Through)
+         Disk Name                                       : /dev/sdb (Disk0) (Bus: 0, Target: 1, Lun: 0)
+         Reported Location                               : Direct Attached, Slot 2(Connector 0:CN0)
+         Vendor                                          : SAMSUNG
+         Model                                           : MZILT800HBHQ0D3
+         Serial number                                   : EXAMPLESERIAL002
+         Total Size                                      : 763097 MB
+         S.M.A.R.T. warnings                             : No
+         SSD                                             : Yes
+         Current Temperature                             : 42 deg C
+         Maximum Temperature                             : 48 deg C
+         Threshold Temperature                           : 74 deg C
+         Power On Hours                                  : 42972
+         Usage Remaining                                 : 98 percent
+         Last Failure Reason                             : No Failure
+      ----------------------------------------------------------------
+      Device Error Counters
+      ----------------------------------------------------------------
+         Hardware Errors                                 : 0
+         Media Failures                                  : 0
+
+      Device #5
+         Device is a Hard drive
+         State                                           : Raw (Pass Through)
+         Disk Name                                       : /dev/sdf (Disk0) (Bus: 0, Target: 5, Lun: 0)
+         Reported Location                               : Direct Attached, Slot 7(Connector 1:CN1)
+         Vendor                                          : SAMSUNG
+         Model                                           : MZILT800HBHQ0D3
+         Serial number                                   : EXAMPLESERIAL003
+         Total Size                                      : 763097 MB
+         S.M.A.R.T. warnings                             : No
+         SSD                                             : Yes
+         Current Temperature                             : 41 deg C
+         Maximum Temperature                             : 47 deg C
+         Threshold Temperature                           : 74 deg C
+         Power On Hours                                  : 41095
+         Usage Remaining                                 : 98 percent
+         Last Failure Reason                             : No Failure
+
+      Device #6
+         Device is a Hard drive
+         State                                           : Raw (Pass Through)
+         Disk Name                                       : /dev/sdg (Disk0) (Bus: 0, Target: 6, Lun: 0)
+         Reported Location                               : Direct Attached, Slot 6(Connector 1:CN1)
+         Vendor                                          : SAMSUNG
+         Model                                           : MZILT800HBHQ0D3
+         Serial number                                   : EXAMPLESERIAL004
+         Total Size                                      : 763097 MB
+         S.M.A.R.T. warnings                             : No
+         SSD                                             : Yes
+         Current Temperature                             : 42 deg C
+         Maximum Temperature                             : 47 deg C
+         Threshold Temperature                           : 74 deg C
+         Power On Hours                                  : 43818
+         Usage Remaining                                 : 69 percent
+         Last Failure Reason                             : No Failure
+
+   Channel #2:
+      Device #0
+         Device is an Enclosure Services Device
+         Reported Channel,Device(T:L)                    : 2,0(0:0)
+         Enclosure ID                                    : 0
+         Enclosure Logical Identifier                    : 5000000000000FFF
+         Type                                            : SES2
+         Vendor                                          : MSCC
+         Model                                           : Virtual SGPIO
+         Serial number                                   : Not Available
+         Firmware                                        : 1.98
+         Status of Enclosure Services Device
+            Speaker status                               : Not Available

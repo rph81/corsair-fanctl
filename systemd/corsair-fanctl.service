@@ -1,0 +1,37 @@
+[Unit]
+Description=Corsair Commander Pro fan control
+Documentation=file:/opt/corsair-fanctl/README.md
+# Deliberately NOT ordered after network-online.target: fan control must not
+# wait for networking. The HTTP server binds 0.0.0.0 by default, which succeeds
+# with no interfaces configured; if bind is pinned to a specific address that
+# does not exist yet, the process exits and Restart= brings it straight back.
+After=systemd-modules-load.service
+
+# A fan controller should never permanently give up. Without this, systemd's
+# default start-rate limit could park the unit in a failed state and leave the
+# fans running unmanaged.
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/corsair-fanctl
+ExecStart=__PYTHON__ -m fanctl --config /etc/corsair-fanctl/config.json
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=20
+
+# The daemon writes fan duties through /sys/class/hwmon and, on the liquidctl
+# path, talks to /dev/hidraw*, so it runs as root.  ProtectKernelTunables and
+# ProtectSystem=strict are deliberately NOT set: both would make the pwm
+# attributes read-only and silently break fan control.
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=full
+ReadWritePaths=/etc/corsair-fanctl
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+LockPersonality=yes
+
+[Install]
+WantedBy=multi-user.target
