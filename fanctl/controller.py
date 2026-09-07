@@ -25,7 +25,22 @@ MAX_TICK_DT = 10.0          # ignore huge gaps (suspend/resume) when slew limiti
 class Controller:
     def __init__(self, config_path: str):
         self.config_path = config_path
-        self.config = config_module.load(config_path)
+        # A config that cannot be parsed must not stop fan control: the
+        # process would crash-loop under systemd with the fans unmanaged. Move
+        # the bad file aside, run on defaults (every fan at the failsafe duty)
+        # and say so loudly in the log and the UI.
+        self.config_warning: str | None = None
+        try:
+            self.config = config_module.load(config_path)
+        except RuntimeError as exc:
+            backup = config_module.quarantine(config_path)
+            self.config = config_module.default_config()
+            self.config_warning = (
+                f"config could not be read ({exc}); it was moved to {backup} and "
+                f"the daemon started with defaults. Reassign sensors, or restore "
+                f"the file and restart."
+            )
+            LOG.error(self.config_warning)
 
         self._lock = threading.RLock()
         self._stop = threading.Event()
@@ -195,7 +210,11 @@ class Controller:
 
                 values = [temps[s] for s in fan_cfg["sensors"] if s in temps]
                 temp = sensors.mix(values, fan_cfg["mix"]) if values else None
-                emergency = temp is not None and temp >= control["emergency_temp"]
+                # The emergency test deliberately ignores the mix setting: with
+                # "avg" or "min" one drive at 90 degC next to one at 40 degC
+                # would never trip it. Any sensor on the channel over the
+                # limit is an emergency.
+                emergency = bool(values) and max(values) >= control["emergency_temp"]
                 controller.reason = self._reason(fan_cfg, temp, emergency)
 
                 duties[index] = controller.step(
@@ -284,6 +303,7 @@ class Controller:
                 "version": __version__,
                 "connected": self._backend is not None,
                 "error": self._error,
+                "warning": self.config_warning,
                 "device": description,
                 "time": self._latest["t"],
                 "temps": {k: round(v, 1) for k, v in self._latest["temps"].items()},

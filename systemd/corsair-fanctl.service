@@ -2,9 +2,9 @@
 Description=Corsair Commander Pro fan control
 Documentation=file:/opt/corsair-fanctl/README.md
 # Deliberately NOT ordered after network-online.target: fan control must not
-# wait for networking. The HTTP server binds 0.0.0.0 by default, which succeeds
-# with no interfaces configured; if bind is pinned to a specific address that
-# does not exist yet, the process exits and Restart= brings it straight back.
+# wait for networking. The control loop starts before the HTTP server, and the
+# bind is retried in the background (with IP_FREEBIND, so a pinned address that
+# is not up yet still works), so networking never gates the fans.
 After=systemd-modules-load.service
 
 # A fan controller should never permanently give up. Without this, systemd's

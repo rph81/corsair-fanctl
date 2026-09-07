@@ -3,6 +3,34 @@
 All notable changes to this project are documented here.
 This project follows [semantic versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+- The hwmon backend refused to open when nothing was on fan channel 1: it
+  checked only `pwm1`, which the kernel driver does not create for an empty
+  channel, so the device never connected and every fan sat at the failsafe
+  duty. It now checks whichever `pwmN` attributes exist.
+- Emergency detection used the channel's mixed temperature, so with
+  `mix: "min"` or `"avg"` one hot drive next to a cool one never tripped it.
+  Any single sensor over the emergency temperature now triggers it.
+- A config file that could not be parsed made the daemon crash-loop under
+  systemd with the fans unmanaged. It is now moved aside as
+  `config.json.corrupt-<time>`, the daemon starts on defaults, and the UI
+  shows a banner explaining what happened.
+- The daemon exited when the web UI port could not be bound. Fan control now
+  starts first and the bind is retried every 5 s; on Linux the socket uses
+  `IP_FREEBIND` so an address that is not configured yet binds anyway.
+
+### Changed
+- `failsafe_duty` is now clamped to 20-100 and `emergency_duty` to 50-100,
+  and emergency can never be lower than failsafe. Both are the duties used
+  when something has already gone wrong, so 0 was never a safe value.
+- `POST` and `PUT` requests must carry `Content-Type: application/json`, and
+  requests with an `Origin` from another site are refused with 403. Without
+  this, any web page open in a browser on the same LAN could turn the fans
+  off through the unauthenticated API. `curl` examples in the README now
+  include the header.
+
 ## [1.2.0]
 
 ### Added

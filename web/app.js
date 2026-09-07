@@ -587,8 +587,9 @@ function updateLive(snapshot) {
   }
 
   const banner = document.getElementById('banner');
-  banner.hidden = !snapshot.error;
-  if (snapshot.error) banner.textContent = snapshot.error;
+  const notice = snapshot.error || snapshot.warning;
+  banner.hidden = !notice;
+  if (notice) banner.textContent = notice;
 
   const rails = document.getElementById('rails');
   rails.replaceChildren(...Object.entries(snapshot.volts || {})
@@ -1028,7 +1029,6 @@ async function poll() {
 
     updateLive(snapshot);
     updateStorage(snapshot.storage);
-    document.getElementById('banner').hidden = !snapshot.error;
   } catch (err) {
     const banner = document.getElementById('banner');
     banner.hidden = false;

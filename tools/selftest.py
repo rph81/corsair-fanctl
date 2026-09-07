@@ -10,12 +10,16 @@ import json
 import os
 import sys
 import tempfile
+import urllib.error
+import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from fanctl import config as cfg  # noqa: E402
+from fanctl import backends, config as cfg  # noqa: E402
 from fanctl.arcconf import parse as parse_arcconf  # noqa: E402
+from fanctl.controller import Controller  # noqa: E402
 from fanctl.curves import FanController, interpolate  # noqa: E402
+from fanctl.httpd import make_server  # noqa: E402
 from fanctl.sensors import mix  # noqa: E402
 
 FIXTURES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures")
@@ -81,6 +85,14 @@ def test_config_normalisation() -> None:
     check("bare sensor string accepted", fan["sensors"], ["cpro:temp1"])
     check("interval floored", hostile["control"]["interval"], 0.5)
     check("emergency temp capped", hostile["control"]["emergency_temp"], 120.0)
+
+    # The duties used when something is wrong may never be low enough to
+    # leave hardware uncooled.
+    floors = cfg.normalize({"control": {"failsafe_duty": 0, "emergency_duty": 0}})
+    check("failsafe duty floored", floors["control"]["failsafe_duty"], cfg.MIN_FAILSAFE_DUTY)
+    check("emergency duty floored", floors["control"]["emergency_duty"], cfg.MIN_EMERGENCY_DUTY)
+    ordered = cfg.normalize({"control": {"failsafe_duty": 90, "emergency_duty": 60}})
+    check("emergency never gentler than failsafe", ordered["control"]["emergency_duty"], 90)
     check("port clamped", hostile["http"]["port"], 65535)
     check("blank token becomes None", hostile["http"]["auth_token"], None)
     check("missing fans backfilled", len(hostile["fans"]), 6)
@@ -260,10 +272,190 @@ def test_arcconf_parsing() -> None:
     check("falls back to channel/device id", parsed[0]["id"], "arcconf:1:c1d3")
 
 
+def _fake_cpro_tree(root: str, fans: dict) -> str:
+    """A corsair-cpro hwmon directory with pwmN only for detected channels."""
+    path = os.path.join(root, "hwmon0")
+    os.makedirs(path, exist_ok=True)
+    with open(os.path.join(path, "name"), "w", encoding="utf-8") as handle:
+        handle.write("corsair-cpro")
+    for index, kind in fans.items():
+        if kind is None:
+            continue
+        for name, value in ((f"fan{index}_label", f"fan{index} {kind}"),
+                            (f"fan{index}_input", "900"), (f"pwm{index}", "0")):
+            with open(os.path.join(path, name), "w", encoding="utf-8") as handle:
+                handle.write(value)
+    return path
+
+
+def test_hwmon_empty_channel_one() -> None:
+    print("hwmon backend with an empty channel 1")
+    saved_root = backends.HWMON_ROOT
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            backends.HWMON_ROOT = tmp
+            # The kernel driver creates no pwm1 when nothing is on channel 1.
+            _fake_cpro_tree(tmp, {1: None, 2: "4pin", 3: "3pin"})
+            backend = backends.HwmonBackend()
+            try:
+                backend.open()
+                print("  ok   opens when pwm1 is absent")
+            except backends.BackendError as exc:
+                FAILURES.append(f"empty channel 1 blocked the backend: {exc}")
+                print(f"  FAIL empty channel 1 blocked the backend: {exc}")
+            fans = {f["index"]: f["connected"] for f in backend.describe()["fans"]}
+            check("channel 1 reported empty", fans[1], False)
+            check("channel 2 reported connected", fans[2], True)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            backends.HWMON_ROOT = tmp
+            _fake_cpro_tree(tmp, {i: None for i in range(1, 7)})
+            try:
+                backends.HwmonBackend().open()
+            except backends.BackendError:
+                print("  ok   no pwm attributes at all is still an error")
+            else:
+                FAILURES.append("device with no pwm attributes opened")
+                print("  FAIL device with no pwm attributes opened")
+    finally:
+        backends.HWMON_ROOT = saved_root
+
+
+class _FakeBackend:
+    name = "fake"
+
+    def __init__(self, temps: dict):
+        self.temps = temps
+        self.written: dict = {}
+
+    def describe(self) -> dict:
+        return {"backend": self.name, "device": "fake", "path": None, "firmware": None,
+                "fans": [{"index": i, "connected": True, "type": "PWM", "note": None}
+                         for i in range(1, 7)],
+                "probes": [{"index": i, "connected": i in self.temps} for i in range(1, 5)]}
+
+    def read(self) -> dict:
+        return {"rpm": {}, "temps": dict(self.temps), "volts": {}}
+
+    def set_duty(self, index: int, duty: float) -> None:
+        self.written[index] = duty
+
+    def close(self) -> None:
+        return
+
+
+def test_emergency_ignores_mix() -> None:
+    print("emergency detection")
+    with tempfile.TemporaryDirectory() as tmp:
+        path = os.path.join(tmp, "config.json")
+        config = cfg.default_config()
+        config["control"]["emergency_temp"] = 85.0
+        config["fans"][0]["sensors"] = ["cpro:temp1", "cpro:temp2"]
+        config["fans"][0]["mix"] = "min"        # would hide the hot probe
+        cfg.save(path, config)
+
+        controller = Controller(path)
+        backend = _FakeBackend({1: 40.0, 2: 95.0})
+        controller._backend = backend
+        controller._description = backend.describe()
+        controller._tick(1.0)
+
+        fan = controller.snapshot()["fans"][0]
+        check("hot probe trips emergency despite mix=min", fan["reason"], "emergency")
+        close("emergency duty written", backend.written[1], 100.0)
+
+
+def test_corrupt_config_does_not_stop_control() -> None:
+    print("corrupt config at startup")
+    with tempfile.TemporaryDirectory() as tmp:
+        path = os.path.join(tmp, "config.json")
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write("{not json")
+        controller = Controller(path)
+        check("started on defaults", controller.config["version"], 1)
+        check("warning set", bool(controller.config_warning), True)
+        check("warning in snapshot", bool(controller.snapshot()["warning"]), True)
+        backups = [n for n in os.listdir(tmp) if n.startswith("config.json.corrupt-")]
+        check("bad file kept as a backup", len(backups), 1)
+        check("original path freed", os.path.exists(path), False)
+
+
+class _StubController:
+    """Just enough of Controller for the HTTP layer."""
+
+    def __init__(self):
+        self.config = cfg.default_config()
+        self.calls: list = []
+
+    def snapshot(self) -> dict:
+        return {"config": self.config}
+
+    def patch_fan(self, index: int, changes: dict) -> dict:
+        self.calls.append(("patch_fan", index, changes))
+        return self.config
+
+    def reconnect(self) -> None:
+        self.calls.append(("reconnect",))
+
+
+def test_http_refuses_cross_site() -> None:
+    print("http cross-site protection")
+    stub = _StubController()
+    server = make_server(stub, "127.0.0.1", 0, None)
+    host, port = server.server_address[:2]
+    base = f"http://{host}:{port}"
+    import threading
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+
+    def request(method, path, body=None, headers=None):
+        req = urllib.request.Request(base + path, data=body, method=method,
+                                     headers=headers or {})
+        try:
+            with urllib.request.urlopen(req, timeout=5) as response:
+                return response.status
+        except urllib.error.HTTPError as exc:
+            return exc.code
+
+    try:
+        check("GET state allowed", request("GET", "/api/state"), 200)
+        check("text/plain POST refused (no CORS preflight for it)",
+              request("POST", "/api/fan/1", b'{"mode":"off"}',
+                      {"Content-Type": "text/plain"}), 403)
+        check("form-encoded POST refused",
+              request("POST", "/api/fan/1", b'{"mode":"off"}',
+                      {"Content-Type": "application/x-www-form-urlencoded"}), 403)
+        check("foreign Origin refused even with JSON",
+              request("POST", "/api/fan/1", b'{"mode":"off"}',
+                      {"Content-Type": "application/json",
+                       "Origin": "http://evil.example"}), 403)
+        check("cross-site Sec-Fetch-Site refused",
+              request("POST", "/api/reconnect", None,
+                      {"Sec-Fetch-Site": "cross-site"}), 403)
+        check("nothing was applied", stub.calls, [])
+        check("same-origin JSON POST allowed",
+              request("POST", "/api/fan/1", b'{"mode":"off"}',
+                      {"Content-Type": "application/json",
+                       "Origin": f"http://{host}:{port}"}), 200)
+        check("JSON POST without Origin allowed (curl)",
+              request("POST", "/api/fan/1", b'{"mode":"fixed"}',
+                      {"Content-Type": "application/json"}), 200)
+        check("bodiless same-origin POST allowed",
+              request("POST", "/api/reconnect", None,
+                      {"Sec-Fetch-Site": "same-origin"}), 200)
+        check("allowed requests reached the controller", len(stub.calls), 3)
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
 def main() -> int:
     for test in (test_interpolation, test_mix, test_config_normalisation,
                  test_config_merge, test_arcconf_parsing,
-                 test_persistence, test_control_behaviour):
+                 test_persistence, test_control_behaviour,
+                 test_hwmon_empty_channel_one, test_emergency_ignores_mix,
+                 test_corrupt_config_does_not_stop_control,
+                 test_http_refuses_cross_site):
         test()
         print()
     if FAILURES:

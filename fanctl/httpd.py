@@ -12,6 +12,7 @@ import logging
 import os
 import posixpath
 import socket
+import sys
 import threading
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -78,6 +79,32 @@ class Handler(BaseHTTPRequestHandler):
             raise ValueError("request body must be a JSON object")
         return parsed
 
+    def _cross_site_problem(self) -> str | None:
+        """Why a state-changing request looks like it came from another site.
+
+        The API is usually run without a token on a home LAN. Without this
+        check any web page open in a browser on that LAN could POST to the
+        daemon and turn the fans off: a plain-text POST needs no CORS preflight
+        and the body was parsed as JSON regardless. Browsers always attach
+        Origin (and Sec-Fetch-Site) to cross-site POSTs, and a JSON
+        Content-Type forces a preflight the browser will refuse, so the three
+        checks together close it. curl and scripts are unaffected as long as
+        they send application/json.
+        """
+        origin = self.headers.get("Origin")
+        if origin:
+            host = (self.headers.get("Host") or "").strip().lower()
+            if urlparse(origin).netloc.lower() != host:
+                return f"cross-site request from {origin} refused"
+        site = self.headers.get("Sec-Fetch-Site")
+        if site and site not in ("same-origin", "none"):
+            return "cross-site request refused"
+        if int(self.headers.get("Content-Length") or 0) > 0:
+            content_type = (self.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+            if content_type != "application/json":
+                return "request body must be sent with Content-Type: application/json"
+        return None
+
     def _authorized(self, query: dict) -> bool:
         if not self.auth_token:
             return True
@@ -116,6 +143,11 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         try:
+            if method in ("POST", "PUT"):
+                problem = self._cross_site_problem()
+                if problem:
+                    self._error(HTTPStatus.FORBIDDEN, problem)
+                    return
             if path.startswith("/api/"):
                 self._api(method, path, query)
             elif method == "GET":
@@ -210,9 +242,25 @@ class Server(ThreadingHTTPServer):
     allow_reuse_address = True
 
     def __init__(self, address, handler, ipv6: bool):
+        self._ipv6 = ipv6
         if ipv6:
             self.address_family = socket.AF_INET6
         super().__init__(address, handler)
+
+    def server_bind(self):
+        # IP_FREEBIND lets the socket bind an address that is not configured
+        # yet, so a config pinned to a specific IP works at boot before the
+        # interface comes up instead of failing until it does. Linux only.
+        if sys.platform.startswith("linux"):
+            if self._ipv6:
+                level, option = socket.IPPROTO_IPV6, getattr(socket, "IPV6_FREEBIND", 78)
+            else:
+                level, option = socket.IPPROTO_IP, getattr(socket, "IP_FREEBIND", 15)
+            try:
+                self.socket.setsockopt(level, option, 1)
+            except OSError:
+                pass
+        super().server_bind()
 
 
 def make_server(controller, bind: str, port: int, auth_token: str | None, web_root: str = WEB_ROOT):

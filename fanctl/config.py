@@ -12,10 +12,13 @@ import json
 import os
 import re
 import tempfile
+import time
 from typing import Any
 
 FAN_COUNT = 6
 MAX_FAVORITES = 10
+MIN_FAILSAFE_DUTY = 20      # the duty used when a sensor is lost or on exit
+MIN_EMERGENCY_DUTY = 50     # the duty used when a sensor is over the limit
 
 DEFAULT_CURVE = [[30, 20], [40, 30], [50, 50], [60, 75], [70, 100]]
 
@@ -198,9 +201,15 @@ def normalize(raw: Any) -> dict:
     ctl = cfg["control"]
     ctl["backend"] = _one_of(ctl_raw.get("backend"), ("auto", "hwmon", "liquidctl"), ctl["backend"])
     ctl["interval"] = round(_num(ctl_raw.get("interval"), 0.5, 60.0, ctl["interval"]), 2)
-    ctl["failsafe_duty"] = _int(ctl_raw.get("failsafe_duty"), 0, 100, ctl["failsafe_duty"])
+    # Failsafe and emergency are the duties used precisely when something has
+    # gone wrong, so neither may be low enough to leave hardware uncooled, and
+    # emergency can never be gentler than failsafe.
+    ctl["failsafe_duty"] = _int(ctl_raw.get("failsafe_duty"),
+                                MIN_FAILSAFE_DUTY, 100, ctl["failsafe_duty"])
     ctl["emergency_temp"] = round(_num(ctl_raw.get("emergency_temp"), 30.0, 120.0, ctl["emergency_temp"]), 1)
-    ctl["emergency_duty"] = _int(ctl_raw.get("emergency_duty"), 0, 100, ctl["emergency_duty"])
+    ctl["emergency_duty"] = _int(ctl_raw.get("emergency_duty"),
+                                 MIN_EMERGENCY_DUTY, 100, ctl["emergency_duty"])
+    ctl["emergency_duty"] = max(ctl["emergency_duty"], ctl["failsafe_duty"])
     ctl["apply_failsafe_on_exit"] = bool(ctl_raw.get("apply_failsafe_on_exit", ctl["apply_failsafe_on_exit"]))
     ctl["reassert_seconds"] = round(_num(ctl_raw.get("reassert_seconds"), 0.0, 3600.0, ctl["reassert_seconds"]), 1)
 
@@ -310,6 +319,18 @@ def load(path: str) -> dict:
         return default_config()
     except (json.JSONDecodeError, OSError) as exc:
         raise RuntimeError(f"cannot read config {path}: {exc}") from exc
+
+
+def quarantine(path: str) -> str:
+    """Move an unreadable config aside so the daemon can start with defaults.
+
+    The original is kept next to the config as `config.json.corrupt-<time>`
+    rather than overwritten, so a hand edit that went wrong can be recovered.
+    """
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    backup = f"{path}.corrupt-{stamp}"
+    os.replace(path, backup)
+    return backup
 
 
 def save(path: str, cfg: dict) -> None:

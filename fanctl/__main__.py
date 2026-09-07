@@ -13,6 +13,7 @@ from .controller import Controller
 from .httpd import make_server, serve_forever
 
 DEFAULT_CONFIG_PATH = "/etc/corsair-fanctl/config.json"
+BIND_RETRY_SECONDS = 5.0
 LOG = logging.getLogger("fanctl")
 
 
@@ -126,17 +127,6 @@ def main(argv: list[str] | None = None) -> int:
     port = args.port or controller.config["http"]["port"]
     token = controller.config["http"]["auth_token"]
 
-    try:
-        server = make_server(controller, bind, port, token)
-    except OSError as exc:
-        LOG.error("cannot bind %s:%s: %s", bind, port, exc)
-        return 1
-
-    controller.start()
-    serve_forever(server)
-    LOG.info("listening on http://%s:%s/ (auth %s)",
-             bind, port, "enabled" if token else "disabled")
-
     done = threading.Event()
 
     def _handle_signal(signum, _frame):
@@ -146,11 +136,29 @@ def main(argv: list[str] | None = None) -> int:
     signal.signal(signal.SIGTERM, _handle_signal)
     signal.signal(signal.SIGINT, _handle_signal)
 
+    # Fans first. The web UI is a convenience; if its port is busy or its bind
+    # address is not up yet, the control loop must still run. Keep retrying
+    # the bind in the background rather than exiting.
+    controller.start()
+
+    server = None
     try:
-        done.wait()
+        while server is None and not done.is_set():
+            try:
+                server = make_server(controller, bind, port, token)
+            except OSError as exc:
+                LOG.error("cannot bind %s:%s: %s -- fan control is running, "
+                          "retrying the web UI in %ss", bind, port, exc, BIND_RETRY_SECONDS)
+                done.wait(BIND_RETRY_SECONDS)
+        if server is not None:
+            serve_forever(server)
+            LOG.info("listening on http://%s:%s/ (auth %s)",
+                     bind, port, "enabled" if token else "disabled")
+            done.wait()
     finally:
-        server.shutdown()
-        server.server_close()
+        if server is not None:
+            server.shutdown()
+            server.server_close()
         controller.stop()
     LOG.info("stopped")
     return 0

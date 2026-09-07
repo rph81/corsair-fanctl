@@ -136,8 +136,21 @@ class HwmonBackend:
             if os.path.exists(self._attr(f"temp{index}_input"))
         ]
 
-        if not os.access(self._attr("pwm1"), os.W_OK):
-            raise BackendError(f"{self._attr('pwm1')} is not writable (run as root)")
+        # corsair-cpro only creates pwmN for channels it detected a fan on, so
+        # probe every channel rather than assuming pwm1 exists: an empty
+        # channel 1 must not make the whole device unusable.
+        present = [index for index in range(1, FAN_COUNT + 1)
+                   if os.path.exists(self._attr(f"pwm{index}"))]
+        if not present:
+            raise BackendError(
+                f"{path} exposes no pwm attributes (no fans detected on any channel)"
+            )
+        unwritable = [index for index in present
+                      if not os.access(self._attr(f"pwm{index}"), os.W_OK)]
+        if unwritable:
+            raise BackendError(
+                f"{self._attr(f'pwm{unwritable[0]}')} is not writable (run as root)"
+            )
 
     def close(self) -> None:  # nothing to release
         return
