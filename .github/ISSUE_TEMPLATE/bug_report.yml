@@ -1,0 +1,50 @@
+name: Bug report
+description: Something does not work as described
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you expected, and what happened instead.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: "Shown in the web UI header, or: curl -s localhost:8899/api/state | grep -o '\"version\":\"[^\"]*\"'"
+      placeholder: "1.2.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: backend
+    attributes:
+      label: Backend
+      options: [hwmon (default), liquidctl, not sure]
+    validations:
+      required: true
+  - type: textarea
+    id: state
+    attributes:
+      label: Daemon state
+      description: "curl -s localhost:8899/api/state | python3 -m json.tool | head -60"
+      render: json
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: "journalctl -u corsair-fanctl -n 50 --no-pager"
+      render: shell
+  - type: input
+    id: host
+    attributes:
+      label: Host
+      placeholder: "Proxmox VE 9.0, kernel 6.14, Lenovo M920q"
+  - type: checkboxes
+    id: redaction
+    attributes:
+      label: Before submitting
+      options:
+        - label: I have removed drive serial numbers from any pasted output
+          required: true

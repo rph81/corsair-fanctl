@@ -1,0 +1,26 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  selftest:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # Proxmox VE 8 ships Python 3.11 (Debian 12); PVE 9 ships 3.13
+        # (Debian 13). 3.9 is the documented floor.
+        python: ["3.9", "3.11", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Self-tests
+        run: python3 tools/selftest.py
+      - name: Byte-compile every module
+        run: python3 -m compileall -q fanctl tools
+      - name: Shell scripts parse
+        run: bash -n install.sh && bash -n uninstall.sh

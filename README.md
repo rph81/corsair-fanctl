@@ -1,5 +1,9 @@
 # corsair-fanctl
 
+[![tests](https://github.com/rph81/corsair-fanctl/actions/workflows/test.yml/badge.svg)](https://github.com/rph81/corsair-fanctl/actions/workflows/test.yml)
+[![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![python: 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/)
+
 Fan control for the **Corsair Commander Pro**, with temperature curves and a web
 UI, built to run on a Proxmox VE host. It does what iCUE does for fans — and
 only fans. There is no lighting support and none is planned.
@@ -506,7 +510,13 @@ fanctl/
   httpd.py       stdlib HTTP server, JSON API, static files
 web/             single-page UI: no framework, no build step
 tools/           devsim.py (simulator), selftest.py, fixtures/
+systemd/         the service unit
+docs/            screenshot
+.github/         CI workflow and issue templates
 ```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for how to run the tests without
+hardware, and [CHANGELOG.md](CHANGELOG.md) for version history.
 
 ## Licence
 

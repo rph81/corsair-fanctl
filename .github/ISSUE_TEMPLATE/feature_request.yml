@@ -1,0 +1,20 @@
+name: Feature request
+description: Suggest an improvement
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do
+      description: The problem you are solving, not just the feature you have in mind.
+    validations:
+      required: true
+  - type: textarea
+    id: hardware
+    attributes:
+      label: Hardware involved
+      placeholder: "e.g. a Dell PERC controller, 2-wire fans, a different Corsair hub"
+  - type: markdown
+    attributes:
+      value: |
+        Note: RGB and lighting control are deliberately out of scope. See CONTRIBUTING.md.
