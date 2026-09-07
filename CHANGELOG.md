@@ -3,7 +3,7 @@
 All notable changes to this project are documented here.
 This project follows [semantic versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.3.0]
 
 ### Fixed
 - The hwmon backend refused to open when nothing was on fan channel 1: it
