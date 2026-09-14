@@ -3,7 +3,7 @@
 All notable changes to this project are documented here.
 This project follows [semantic versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.4.0]
 
 ### Added
 - The History chart legend is now a set of toggles: click a series to hide or
