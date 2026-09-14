@@ -211,7 +211,12 @@ adopts them as long as you have no unsaved edits.
     "apply_failsafe_on_exit": true,
     "reassert_seconds": 30.0   // re-send duties periodically
   },
-  "history": { "seconds": 3600 },
+  "history": {
+    "seconds": 25200,          // 7 hours of chart history
+    "persist": true,           // save it to disk so it survives a restart
+    "file": "/var/lib/corsair-fanctl/history.json",  // file-only, see below
+    "save_interval": 60.0      // seconds between writes
+  },
   "storage": { "enabled": true, "controller": 1, "interval": 30.0 },
   "ui": { "theme": "dark", "accent": "#4aa3ff", "favorites": [] },
   "fans": [
@@ -383,6 +388,14 @@ In the **History** chart, each legend entry is a toggle: click a series to
 hide or show it, shift-click to see it on its own, and **Show all** to bring
 everything back. That selection is remembered per browser, not on the server.
 
+The chart history is saved to `/var/lib/corsair-fanctl/history.json` once a
+minute and on shutdown, and read back at startup, so restarting the service
+does not wipe the chart. It is one bounded file overwritten in place, a few
+megabytes at most; if it cannot be written the daemon logs a warning once and
+carries on. `history.seconds` (Settings → History retained) sets how much is
+kept, 7 hours by default. Like `storage.command`, `history.file` can only be
+changed in the config file, since it names a path the daemon writes as root.
+
 Chart series colours are deliberately *not* tied to the accent: a categorical
 palette needs its colours distinguishable from each other, which is a different
 problem from picking a brand colour. The chart does swap to a darker palette in
@@ -536,7 +549,7 @@ fanctl/
   curves.py      interpolation, hysteresis, slew limiting, spin-up
   sensors.py     hwmon temperature discovery, sensor mixing
   arcconf.py     Adaptec/Microsemi drive temperatures (parser + poller)
-  history.py     in-memory ring buffer for the charts
+  history.py     ring buffer for the charts, saved to disk across restarts
   httpd.py       stdlib HTTP server, JSON API, static files
 web/             single-page UI: no framework, no build step
 tools/           devsim.py (simulator), selftest.py, fixtures/

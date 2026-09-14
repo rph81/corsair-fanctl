@@ -17,6 +17,7 @@ from typing import Any
 
 FAN_COUNT = 6
 MAX_FAVORITES = 10
+DEFAULT_HISTORY_FILE = "/var/lib/corsair-fanctl/history.json"
 MIN_FAILSAFE_DUTY = 20      # the duty used when a sensor is lost or on exit
 MIN_EMERGENCY_DUTY = 50     # the duty used when a sensor is over the limit
 
@@ -61,7 +62,14 @@ def default_config() -> dict:
             "apply_failsafe_on_exit": True,
             "reassert_seconds": 30.0,
         },
-        "history": {"seconds": 3600},
+        "history": {
+            "seconds": 25200,           # 7 hours, so the 6-hour chart range is useful
+            "persist": True,
+            # `file` is NOT settable through the HTTP API -- see
+            # Controller.update_config. The daemon writes it as root.
+            "file": DEFAULT_HISTORY_FILE,
+            "save_interval": 60.0,      # seconds between writes to disk
+        },
         "ui": {
             "theme": "dark",        # dark | light | system
             "accent": "#4aa3ff",
@@ -214,7 +222,14 @@ def normalize(raw: Any) -> dict:
     ctl["reassert_seconds"] = round(_num(ctl_raw.get("reassert_seconds"), 0.0, 3600.0, ctl["reassert_seconds"]), 1)
 
     hist_raw = raw.get("history") if isinstance(raw.get("history"), dict) else {}
-    cfg["history"]["seconds"] = _int(hist_raw.get("seconds"), 60, 86400, cfg["history"]["seconds"])
+    hist = cfg["history"]
+    hist["seconds"] = _int(hist_raw.get("seconds"), 60, 86400, hist["seconds"])
+    hist["persist"] = bool(hist_raw.get("persist", hist["persist"]))
+    history_file = hist_raw.get("file")
+    if isinstance(history_file, str) and history_file.strip():
+        hist["file"] = history_file.strip()
+    hist["save_interval"] = round(_num(hist_raw.get("save_interval"), 10.0, 3600.0,
+                                       hist["save_interval"]), 1)
 
     ui_raw = raw.get("ui") if isinstance(raw.get("ui"), dict) else {}
     cfg["ui"]["theme"] = _one_of(ui_raw.get("theme"), ("dark", "light", "system"),
