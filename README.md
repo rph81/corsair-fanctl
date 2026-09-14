@@ -379,6 +379,10 @@ Changes apply instantly - no Apply needed - and save to the server, so the look
 follows you to any browser rather than living in one machine's localStorage. Up
 to **10 favourite colours** can be saved; hover a favourite to remove it.
 
+In the **History** chart, each legend entry is a toggle: click a series to
+hide or show it, shift-click to see it on its own, and **Show all** to bring
+everything back. That selection is remembered per browser, not on the server.
+
 Chart series colours are deliberately *not* tied to the accent: a categorical
 palette needs its colours distinguishable from each other, which is a different
 problem from picking a brand colour. The chart does swap to a darker palette in

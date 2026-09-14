@@ -3,6 +3,13 @@
 All notable changes to this project are documented here.
 This project follows [semantic versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- The History chart legend is now a set of toggles: click a series to hide or
+  show it, shift-click to see it on its own, and **Show all** to bring
+  everything back. The selection is remembered per browser.
+
 ## [1.3.0]
 
 ### Fixed
