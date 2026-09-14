@@ -36,7 +36,24 @@ const state = {
   cards: new Map(),    // fan index -> refs
   catalogKey: '',
   history: [],
+  hidden: new Set(),   // chart series keys the viewer has switched off
 };
+
+const HIDDEN_KEY = 'fanctl-hidden-series';
+
+/* Chart visibility is a per-browser convenience, so it lives in localStorage
+ * rather than the server-side ui config; storage can be unavailable in
+ * private windows, hence the try/catch. */
+function loadHidden() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(HIDDEN_KEY) || '[]');
+    state.hidden = new Set(Array.isArray(raw) ? raw : []);
+  } catch (_) { state.hidden = new Set(); }
+}
+
+function saveHidden() {
+  try { localStorage.setItem(HIDDEN_KEY, JSON.stringify([...state.hidden])); } catch (_) { /* optional */ }
+}
 
 function initToken() {
   const fromUrl = new URLSearchParams(location.search).get('token');
@@ -797,6 +814,7 @@ function drawChart() {
   ctx.lineWidth = 1.6;
   ctx.lineJoin = 'round';
   for (const item of series) {
+    if (state.hidden.has(item.key)) continue;
     ctx.strokeStyle = item.color;
     ctx.setLineDash(item.kind === 'duty' ? [4, 3] : []);
     ctx.beginPath();
@@ -810,9 +828,51 @@ function drawChart() {
   }
   ctx.setLineDash([]);
 
-  document.getElementById('legend').replaceChildren(...series.map((item) =>
-    el('span', {}, el('i', { style: `background:${item.color}` }),
-       document.createTextNode(item.label))));
+  renderLegend(series);
+}
+
+/* Each legend entry is a toggle: click hides or shows that series, shift-click
+ * shows it on its own. Hidden entries stay in the legend, dimmed, so they can
+ * be switched back on. */
+function renderLegend(series) {
+  const keys = series.map((item) => item.key);
+  // Forget entries for series that no longer exist (a sensor was unassigned).
+  for (const key of [...state.hidden]) if (!keys.includes(key)) state.hidden.delete(key);
+
+  const items = series.map((item) => {
+    const visible = !state.hidden.has(item.key);
+    const button = el('button', {
+      type: 'button', class: 'legend-item',
+      title: visible ? 'Click to hide · shift-click to show only this'
+                     : 'Click to show · shift-click to show only this',
+      onclick: (event) => {
+        if (event.shiftKey) {
+          soloSeries(item.key, keys);
+        } else if (visible && state.hidden.size === keys.length - 1) {
+          // Hiding the last visible series would leave an empty chart; treat
+          // it as "show everything" instead, which is what people expect.
+          state.hidden.clear();
+        } else {
+          state.hidden[visible ? 'add' : 'delete'](item.key);
+        }
+        saveHidden();
+        drawChart();
+      },
+    }, el('i', { style: `background:${item.color}` }), document.createTextNode(item.label));
+    button.setAttribute('aria-pressed', String(visible));
+    return button;
+  });
+
+  const anyHidden = state.hidden.size > 0;
+  document.getElementById('legend').replaceChildren(...items);
+  const showAll = document.getElementById('btn-legend-all');
+  showAll.hidden = !anyHidden;
+  document.getElementById('legend-help').hidden = series.length < 2;
+}
+
+function soloSeries(key, keys) {
+  const alreadySolo = !state.hidden.has(key) && state.hidden.size === keys.length - 1;
+  state.hidden = alreadySolo ? new Set() : new Set(keys.filter((k) => k !== key));
 }
 
 /* ----------------------------------------------------------------- wiring */
@@ -1056,6 +1116,12 @@ function main() {
   document.getElementById('btn-apply').onclick = applyChanges;
   document.getElementById('btn-revert').onclick = revertChanges;
   document.getElementById('chart-range').onchange = pollHistory;
+  loadHidden();
+  document.getElementById('btn-legend-all').onclick = () => {
+    state.hidden.clear();
+    saveHidden();
+    drawChart();
+  };
   document.getElementById('btn-storage-refresh').onclick = async () => {
     try {
       await api('/api/storage/refresh', { method: 'POST' });

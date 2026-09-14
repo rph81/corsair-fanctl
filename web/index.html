@@ -67,7 +67,13 @@
       </select>
     </div>
     <canvas id="chart"></canvas>
-    <div class="legend" id="legend"></div>
+    <div class="legend-row">
+      <div class="legend" id="legend"></div>
+      <button type="button" id="btn-legend-all" class="legend-all" hidden>Show all</button>
+    </div>
+    <p class="curve-help" id="legend-help" hidden>
+      Click a series to hide or show it · shift-click to see it on its own
+    </p>
   </section>
 </main>
 
