@@ -3,6 +3,15 @@
 All notable changes to this project are documented here.
 This project follows [semantic versioning](https://semver.org/).
 
+## [1.4.2]
+
+### Changed
+- Chart history is now saved every 5 minutes by default instead of every
+  minute (`history.save_interval`). The whole file is rewritten on each save,
+  which added up to several GB of SSD writes a day at 7 hours of retention;
+  a graceful restart always saves the full buffer anyway. Existing configs
+  keep their own value.
+
 ## [1.4.1]
 
 ### Added

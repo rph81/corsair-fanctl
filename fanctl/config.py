@@ -68,7 +68,10 @@ def default_config() -> dict:
             # `file` is NOT settable through the HTTP API -- see
             # Controller.update_config. The daemon writes it as root.
             "file": DEFAULT_HISTORY_FILE,
-            "save_interval": 60.0,      # seconds between writes to disk
+            # Seconds between writes to disk. The whole file is rewritten each
+            # time (a few MB at 7 h), and a graceful stop always saves anyway,
+            # so a slow cadence only costs chart minutes on a hard crash.
+            "save_interval": 300.0,
         },
         "ui": {
             "theme": "dark",        # dark | light | system
