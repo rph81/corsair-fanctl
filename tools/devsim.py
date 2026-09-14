@@ -159,12 +159,22 @@ def run() -> int:
 
     config_path = args.config or os.path.join(root, "config.json")
 
-    # storage.command cannot be set over the API, so seed it in the config file
-    # exactly the way a real operator would.
+    # storage.command and history.file cannot be set over the API, so seed
+    # them in the config file exactly the way a real operator would. An
+    # existing --config is kept (curves, sensors, history path), so restarting
+    # the simulator against the same file behaves like restarting the service.
     from fanctl import config as config_module
     seeded = config_module.default_config()
+    if args.config:
+        try:
+            seeded = config_module.load(args.config)
+        except RuntimeError as exc:
+            print(f"ignoring unreadable config {args.config}: {exc}", flush=True)
     seeded["storage"]["command"] = build_fake_arcconf(root)
     seeded["storage"]["interval"] = 10.0
+    if seeded["history"]["file"] == config_module.DEFAULT_HISTORY_FILE:
+        seeded["history"]["file"] = os.path.join(root, "history.json")
+    seeded["history"]["save_interval"] = min(seeded["history"]["save_interval"], 10.0)
     config_module.save(config_path, seeded)
 
     try:

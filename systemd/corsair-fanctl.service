@@ -29,6 +29,8 @@ PrivateTmp=yes
 ProtectHome=yes
 ProtectSystem=full
 ReadWritePaths=/etc/corsair-fanctl
+# /var/lib/corsair-fanctl holds the chart history so it survives restarts.
+StateDirectory=corsair-fanctl
 RestrictSUIDSGID=yes
 RestrictRealtime=yes
 LockPersonality=yes

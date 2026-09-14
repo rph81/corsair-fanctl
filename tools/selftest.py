@@ -10,6 +10,7 @@ import json
 import os
 import sys
 import tempfile
+import time
 import urllib.error
 import urllib.request
 
@@ -19,6 +20,7 @@ from fanctl import backends, config as cfg  # noqa: E402
 from fanctl.arcconf import parse as parse_arcconf  # noqa: E402
 from fanctl.controller import Controller  # noqa: E402
 from fanctl.curves import FanController, interpolate  # noqa: E402
+from fanctl.history import History  # noqa: E402
 from fanctl.httpd import make_server  # noqa: E402
 from fanctl.sensors import mix  # noqa: E402
 
@@ -449,13 +451,100 @@ def test_http_refuses_cross_site() -> None:
         server.server_close()
 
 
+def _sample(t: float, temp: float = 40.0) -> dict:
+    return {"t": t, "temps": {"cpro:temp1": temp}, "rpm": {"1": 900}, "duty": {"1": 50.0}}
+
+
+def test_history_persistence() -> None:
+    print("history persistence")
+    with tempfile.TemporaryDirectory() as tmp:
+        path = os.path.join(tmp, "state", "history.json")   # directory does not exist yet
+        now = time.time()
+
+        history = History(3600, 2.0, path=path)
+        for offset in (-300, -200, -100):
+            history.append(_sample(now + offset))
+        check("save creates the directory and file", history.save(), True)
+        check("file exists", os.path.isfile(path), True)
+        check("clean after save", history.save(), True)   # nothing dirty: still fine
+
+        restored = History(3600, 2.0, path=path)
+        check("samples restored", restored.load(), 3)
+        check("restored in order", [round(s["t"] - now) for s in restored.series()], [-300, -200, -100])
+
+        # Samples outside the retention window, from the future, or malformed
+        # are dropped on load.
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump({"version": 1, "samples": [
+                _sample(now - 7200),               # older than the 1 h window
+                _sample(now + 3600),               # clock went backwards
+                {"t": now - 10},                   # missing fields
+                "garbage",
+                _sample(now - 20),
+            ]}, handle)
+        filtered = History(3600, 2.0, path=path)
+        check("stale, future and malformed samples dropped", filtered.load(), 1)
+
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write("{not json")
+        broken = History(3600, 2.0, path=path)
+        check("corrupt file ignored", broken.load(), 0)
+
+        # Persistence off: nothing is written and load is a no-op.
+        off = History(3600, 2.0, path=None)
+        off.append(_sample(now))
+        check("no path means no write", off.save(), False)
+        check("no path means no load", off.load(), 0)
+
+        # An unwritable location must not raise: charts are not fan control.
+        unwritable = History(3600, 2.0, path=os.path.join(tmp, "file-not-dir", "x.json"))
+        with open(os.path.join(tmp, "file-not-dir"), "w", encoding="utf-8") as handle:
+            handle.write("")
+        unwritable.append(_sample(now))
+        check("unwritable path fails quietly", unwritable.save(), False)
+
+        # maybe_save honours the interval.
+        paced = History(3600, 2.0, path=path)
+        paced.append(_sample(now))
+        paced.maybe_save(every=3600)
+        check("maybe_save waits for the interval", paced._dirty, True)
+        paced.maybe_save(every=0)
+        check("maybe_save writes once due", paced._dirty, False)
+
+
+def test_history_config() -> None:
+    print("history config")
+    base = cfg.default_config()
+    check("default retention is 7 hours", base["history"]["seconds"], 25200)
+    check("persist on by default", base["history"]["persist"], True)
+    check("default file", base["history"]["file"], cfg.DEFAULT_HISTORY_FILE)
+
+    hostile = cfg.normalize({"history": {"save_interval": 1, "file": "  ", "persist": 0}})
+    check("save interval floored", hostile["history"]["save_interval"], 10.0)
+    check("blank file keeps default", hostile["history"]["file"], cfg.DEFAULT_HISTORY_FILE)
+    check("persist coerced to bool", hostile["history"]["persist"], False)
+
+    # history.file is a path written as root: file-only, never via the API.
+    with tempfile.TemporaryDirectory() as tmp:
+        path = os.path.join(tmp, "config.json")
+        seeded = cfg.default_config()
+        seeded["history"]["file"] = os.path.join(tmp, "history.json")
+        cfg.save(path, seeded)
+        controller = Controller(path)
+        updated = controller.update_config({"history": {"file": "/etc/passwd", "seconds": 600}})
+        check("history.file cannot be changed over the API",
+              updated["history"]["file"], os.path.join(tmp, "history.json"))
+        check("other history settings still apply", updated["history"]["seconds"], 600)
+
+
 def main() -> int:
     for test in (test_interpolation, test_mix, test_config_normalisation,
                  test_config_merge, test_arcconf_parsing,
                  test_persistence, test_control_behaviour,
                  test_hwmon_empty_channel_one, test_emergency_ignores_mix,
                  test_corrupt_config_does_not_stop_control,
-                 test_http_refuses_cross_site):
+                 test_http_refuses_cross_site,
+                 test_history_persistence, test_history_config):
         test()
         print()
     if FAILURES:

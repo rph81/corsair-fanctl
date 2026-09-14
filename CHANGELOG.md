@@ -3,7 +3,20 @@
 All notable changes to this project are documented here.
 This project follows [semantic versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.4.1]
+
+### Added
+- Chart history now survives a service restart. It is saved to
+  `/var/lib/corsair-fanctl/history.json` once a minute and on shutdown, and
+  restored at startup. `history.persist`, `history.file` (config file only)
+  and `history.save_interval` control it.
+
+### Changed
+- Default history retention is now 7 hours (was 1 hour), so the chart's
+  6-hour range is actually usable. Existing configs keep their own value;
+  raise it under **Settings → History retained**.
+
+## [1.4.0]
 
 ### Added
 - The History chart legend is now a set of toggles: click a series to hide or

@@ -60,8 +60,10 @@ class Controller:
         self._last_write = time.monotonic()
         self._overrides: dict[int, tuple[float, float]] = {}
 
+        history_cfg = self.config["history"]
         self._history = History(
-            self.config["history"]["seconds"], self.config["control"]["interval"]
+            history_cfg["seconds"], self.config["control"]["interval"],
+            path=history_cfg["file"] if history_cfg["persist"] else None,
         )
         self._latest: dict = {"temps": {}, "rpm": {}, "volts": {}, "t": 0.0}
 
@@ -70,6 +72,7 @@ class Controller:
     # ------------------------------------------------------------------
 
     def start(self) -> None:
+        self._history.load()
         self._host.scan()
         self._storage.start()
         self._thread = threading.Thread(target=self._run, name="fan-control", daemon=True)
@@ -82,6 +85,7 @@ class Controller:
         if self._thread is not None:
             self._thread.join(timeout=10.0)
         self._shutdown_device()
+        self._history.save()
 
     def _shutdown_device(self) -> None:
         with self._lock:
@@ -254,6 +258,9 @@ class Controller:
             "rpm": dict(reading["rpm"]),
             "duty": {i: round(d, 1) for i, d in duties.items()},
         })
+        with self._lock:
+            save_every = self.config["history"]["save_interval"]
+        self._history.maybe_save(save_every)
 
     # ------------------------------------------------------------------
     # API surface
@@ -326,6 +333,10 @@ class Controller:
             # API into arbitrary root code execution, so the running value
             # always wins: it can only be changed by editing the config file.
             new_config["storage"]["command"] = self.config["storage"]["command"]
+            # Same reasoning for history.file: it is a path the daemon writes
+            # as root, so it is file-only too. `persist` itself only takes
+            # effect on restart, since the History object is built at startup.
+            new_config["history"]["file"] = self.config["history"]["file"]
             backend_changed = new_config["control"]["backend"] != self._backend_pref
             # Fan modes are programmed during initialize(), so a change only
             # takes effect on a fresh connection.

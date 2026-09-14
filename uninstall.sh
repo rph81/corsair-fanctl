@@ -9,6 +9,7 @@ set -euo pipefail
 
 PREFIX=/opt/corsair-fanctl
 CONFIG_DIR=/etc/corsair-fanctl
+STATE_DIR=/var/lib/corsair-fanctl
 UNIT=/etc/systemd/system/corsair-fanctl.service
 SERVICE=corsair-fanctl
 PURGE=0
@@ -31,6 +32,8 @@ systemctl daemon-reload
 
 info "removing $PREFIX"
 rm -rf "$PREFIX"
+# Chart history: regenerated from scratch by the next install, nothing to keep.
+rm -rf "$STATE_DIR"
 rm -f /etc/modules-load.d/corsair-cpro.conf
 
 if [[ $PURGE -eq 1 ]]; then
