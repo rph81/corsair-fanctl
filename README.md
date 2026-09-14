@@ -54,15 +54,15 @@ Or download the release tarball, if git is not installed:
 
 ```bash
 curl -fsSL -o corsair-fanctl.tar.gz \
-  https://github.com/rph81/corsair-fanctl/releases/latest/download/corsair-fanctl-1.4.0.tar.gz
-tar -xzf corsair-fanctl.tar.gz && cd corsair-fanctl-1.4.0 && ./install.sh
+  https://github.com/rph81/corsair-fanctl/releases/latest/download/corsair-fanctl-1.4.1.tar.gz
+tar -xzf corsair-fanctl.tar.gz && cd corsair-fanctl-1.4.1 && ./install.sh
 ```
 
 To verify the download first (the checksum is published alongside it):
 
 ```bash
-curl -fsSL -O https://github.com/rph81/corsair-fanctl/releases/latest/download/corsair-fanctl-1.4.0.tar.gz.sha256
-sha256sum -c corsair-fanctl-1.4.0.tar.gz.sha256
+curl -fsSL -O https://github.com/rph81/corsair-fanctl/releases/latest/download/corsair-fanctl-1.4.1.tar.gz.sha256
+sha256sum -c corsair-fanctl-1.4.1.tar.gz.sha256
 ```
 
 Then open `http://<host-ip>:8899/`.

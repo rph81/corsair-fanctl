@@ -3,7 +3,7 @@
 All notable changes to this project are documented here.
 This project follows [semantic versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.4.1]
 
 ### Added
 - Chart history now survives a service restart. It is saved to
