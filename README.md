@@ -54,15 +54,15 @@ Or download the release tarball, if git is not installed:
 
 ```bash
 curl -fsSL -o corsair-fanctl.tar.gz \
-  https://github.com/rph81/corsair-fanctl/releases/latest/download/corsair-fanctl-1.4.1.tar.gz
-tar -xzf corsair-fanctl.tar.gz && cd corsair-fanctl-1.4.1 && ./install.sh
+  https://github.com/rph81/corsair-fanctl/releases/latest/download/corsair-fanctl-1.4.2.tar.gz
+tar -xzf corsair-fanctl.tar.gz && cd corsair-fanctl-1.4.2 && ./install.sh
 ```
 
 To verify the download first (the checksum is published alongside it):
 
 ```bash
-curl -fsSL -O https://github.com/rph81/corsair-fanctl/releases/latest/download/corsair-fanctl-1.4.1.tar.gz.sha256
-sha256sum -c corsair-fanctl-1.4.1.tar.gz.sha256
+curl -fsSL -O https://github.com/rph81/corsair-fanctl/releases/latest/download/corsair-fanctl-1.4.2.tar.gz.sha256
+sha256sum -c corsair-fanctl-1.4.2.tar.gz.sha256
 ```
 
 Then open `http://<host-ip>:8899/`.
@@ -215,7 +215,7 @@ adopts them as long as you have no unsaved edits.
     "seconds": 25200,          // 7 hours of chart history
     "persist": true,           // save it to disk so it survives a restart
     "file": "/var/lib/corsair-fanctl/history.json",  // file-only, see below
-    "save_interval": 60.0      // seconds between writes
+    "save_interval": 300.0     // seconds between writes
   },
   "storage": { "enabled": true, "controller": 1, "interval": 30.0 },
   "ui": { "theme": "dark", "accent": "#4aa3ff", "favorites": [] },
@@ -388,11 +388,13 @@ In the **History** chart, each legend entry is a toggle: click a series to
 hide or show it, shift-click to see it on its own, and **Show all** to bring
 everything back. That selection is remembered per browser, not on the server.
 
-The chart history is saved to `/var/lib/corsair-fanctl/history.json` once a
-minute and on shutdown, and read back at startup, so restarting the service
-does not wipe the chart. It is one bounded file overwritten in place, a few
-megabytes at most; if it cannot be written the daemon logs a warning once and
-carries on. `history.seconds` (Settings → History retained) sets how much is
+The chart history is saved to `/var/lib/corsair-fanctl/history.json` every
+five minutes and on shutdown, and read back at startup, so restarting the
+service does not wipe the chart. It is one bounded file overwritten in place,
+a few megabytes at most, so the cadence is kept slow to spare the SSD; a
+graceful stop always saves everything, and only a hard crash can lose the
+last few minutes. If the file cannot be written the daemon logs a warning once
+and carries on. `history.seconds` (Settings → History retained) sets how much is
 kept, 7 hours by default. Like `storage.command`, `history.file` can only be
 changed in the config file, since it names a path the daemon writes as root.
 
