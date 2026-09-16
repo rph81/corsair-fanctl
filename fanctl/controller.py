@@ -306,6 +306,16 @@ class Controller:
             catalog = (sensors.device_catalog(self._description or {})
                        + self._host.catalog()
                        + self._storage.catalog())
+            # Apply user-chosen names here rather than in each provider, so
+            # every consumer -- cards, chart legend, every browser -- agrees on
+            # what a sensor is called. `default_label` is kept so the UI can
+            # show what it would revert to.
+            names = self.config["sensor_names"]
+            for entry in catalog:
+                custom = names.get(entry["id"])
+                if custom:
+                    entry["default_label"] = entry["label"]
+                    entry["label"] = custom
             return {
                 "version": __version__,
                 "connected": self._backend is not None,

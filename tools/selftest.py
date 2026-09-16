@@ -18,6 +18,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from fanctl import backends, config as cfg  # noqa: E402
 from fanctl.arcconf import parse as parse_arcconf  # noqa: E402
+from fanctl.arcconf import parse_controller  # noqa: E402
 from fanctl.controller import Controller  # noqa: E402
 from fanctl.curves import FanController, interpolate  # noqa: E402
 from fanctl.history import History  # noqa: E402
@@ -100,6 +101,84 @@ def test_config_normalisation() -> None:
     check("missing fans backfilled", len(hostile["fans"]), 6)
 
     check("garbage input yields defaults", cfg.normalize("nonsense")["version"], 1)
+
+
+def test_sensor_naming_and_chart() -> None:
+    print("sensor naming and chart selection")
+    normalised = cfg.normalize({
+        "sensor_names": {
+            "cpro:temp1": "  Drive cage intake  ",   # trimmed
+            "cpro:temp2": "",                        # blank means "no name"
+            "cpro:temp3": "x" * 80,                  # capped
+            "bad-value": 123,                        # not a string
+            7: "numeric key",                        # not a string key
+        },
+        "ui": {"chart_sensors": ["a", "a", "b", 7, ""]},
+    })
+    names = normalised["sensor_names"]
+    check("name trimmed", names.get("cpro:temp1"), "Drive cage intake")
+    check("blank name dropped", "cpro:temp2" in names, False)
+    check("name length capped", len(names["cpro:temp3"]), 40)
+    check("non-string value dropped", "bad-value" in names, False)
+    check("chart sensors de-duplicated", normalised["ui"]["chart_sensors"], ["a", "b"])
+
+    check("defaults are empty", cfg.default_config()["sensor_names"], {})
+
+    # Renaming must not disturb anything else: the UI sends only this key.
+    current = cfg.default_config()
+    current["fans"][0]["name"] = "Front intake"
+    current["fans"][0]["sensors"] = ["cpro:temp1"]
+    merged = cfg.merge(current, {"sensor_names": {"cpro:temp1": "Intake"}})
+    check("fan survives a rename PUT", merged["fans"][0]["name"], "Front intake")
+    check("rename applied", merged["sensor_names"]["cpro:temp1"], "Intake")
+
+    # Clearing needs a whole-map replacement, which is what the reset button sends.
+    cleared = cfg.merge(merged, {"sensor_names": {}})
+    check("names can be cleared", cleared["sensor_names"], {})
+
+    # Removing one name is the same mechanism: an absent key must mean removed,
+    # which a recursive merge could not express.
+    two = cfg.merge(current, {"sensor_names": {"cpro:temp1": "A", "cpro:temp2": "B"}})
+    one = cfg.merge(two, {"sensor_names": {"cpro:temp2": "B"}})
+    check("a single name can be removed", one["sensor_names"], {"cpro:temp2": "B"})
+
+
+def test_control_temp_in_every_mode() -> None:
+    print("control temperature outside curve mode")
+    fan = cfg.default_config()["fans"][0]
+    fan["hysteresis"] = 0.0
+    fan["mode"] = "fixed"
+    fan["fixed_duty"] = 42
+    fan["ramp_up"] = 100.0
+    fan["ramp_down"] = 100.0
+    fan["spin_up_ms"] = 0
+
+    controller = FanController(1)
+    controller.duty = 42.0
+    controller._started = True
+
+    # A fixed channel still reads its sensors: the card and the chart show the
+    # temperature even though the curve is not driving the duty.
+    controller.step(fan, 45.0, dt=1.0, failsafe_duty=80)
+    close("fixed mode tracks the sensor", controller.control_temp, 45.0)
+    close("fixed mode holds its duty", controller.duty, 42.0)
+
+    controller.step(fan, 51.0, dt=1.0, failsafe_duty=80)
+    close("and keeps tracking as it moves", controller.control_temp, 51.0)
+    close("duty still fixed", controller.duty, 42.0)
+
+    # "off" behaves the same way for the readout.
+    fan["mode"] = "off"
+    controller.step(fan, 55.0, dt=1.0, failsafe_duty=80)
+    close("off mode still reports temperature", controller.control_temp, 55.0)
+    close("but stops the fan", controller.duty, 0.0)
+
+    # With no sensors there is nothing to report, in any mode.
+    fan["mode"] = "fixed"
+    controller = FanController(1)
+    controller.step(fan, None, dt=1.0, failsafe_duty=80)
+    check("no sensor means no reading", controller.control_temp, None)
+    close("fixed duty still applied", controller.target, 42.0)
 
 
 def test_persistence() -> None:
@@ -222,6 +301,73 @@ def test_config_merge() -> None:
     merged = cfg.merge(current, full)
     check("full replacement wins", merged["fans"][0]["name"], "Renamed")
     check("full replacement clears old fan 3", merged["fans"][2]["name"], "Fan 3")
+
+
+def test_arcconf_controller_parsing() -> None:
+    print("arcconf controller parsing")
+    with open(os.path.join(FIXTURES, "arcconf-ad.txt"), encoding="utf-8") as handle:
+        info = parse_controller(handle.read(), controller=1)
+
+    check("model", info["model"], "MSCC SmartHBA 2100-4i4e")
+    check("firmware", info["firmware"], "1.98")
+    check("all four sensors found", len(info["sensors"]), 4)
+    check("ids slugged from location",
+          [s["id"] for s in info["sensors"]],
+          ["arcconf:1:ctrl:inlet-ambient", "arcconf:1:ctrl:asic",
+           "arcconf:1:ctrl:top", "arcconf:1:ctrl:bottom"])
+    close("asic temperature", info["sensors"][1]["temperature"], 48.0)
+    close("asic peak", info["sensors"][1]["temperature_max"], 49.0)
+
+    # The Connector section further down also has a "Location" key; it must not
+    # overwrite the last sensor's.
+    check("connector section did not bleed in", info["sensors"][3]["location"], "Bottom")
+
+    # Identifiers that must never reach the API.
+    blob = repr(info)
+    check("serial not parsed", "EXAMPLECTRLSN" in blob, False)
+    check("world-wide name not parsed", "5000000000000FF0" in blob, False)
+
+    # Older firmware: headline line only, no sensors section.
+    headline_only = """   Controller Model                    : Adaptec ASR-8805
+   Controller Serial Number            : SECRET123
+   Temperature                         : 52 C/ 125 F (Normal)
+   Firmware                            : 7.11
+"""
+    old = parse_controller(headline_only, 2)
+    check("falls back to the headline reading", len(old["sensors"]), 1)
+    check("fallback id", old["sensors"][0]["id"], "arcconf:2:ctrl")
+    close("fallback temperature", old["sensors"][0]["temperature"], 52.0)
+    check("fallback peak is unknown", old["sensors"][0]["temperature_max"], None)
+
+    # When both shapes are present the named sensors win, so the headline is not
+    # exposed a second time under a different id.
+    with open(os.path.join(FIXTURES, "arcconf-ad.txt"), encoding="utf-8") as handle:
+        both = parse_controller(handle.read(), 1)
+    check("headline not duplicated",
+          [s["id"] for s in both["sensors"] if s["id"].endswith(":ctrl")], [])
+
+    check("empty input", parse_controller("", 1)["sensors"], [])
+    check("garbage input", parse_controller("nonsense\nlines", 1)["sensors"], [])
+
+    # A sensor with no location falls back to its numeric id.
+    unlabelled = """   Sensor ID    : 7
+   Current Value : 60 deg C
+"""
+    check("unlabelled sensor id",
+          parse_controller(unlabelled, 1)["sensors"][0]["id"], "arcconf:1:ctrl:sensor7")
+
+    # Two sensors sharing a location must not collide.
+    duplicate = """   Sensor ID    : 0
+   Current Value : 40 deg C
+   Location      : ASIC
+
+   Sensor ID    : 1
+   Current Value : 44 deg C
+   Location      : ASIC
+"""
+    check("duplicate locations disambiguated",
+          [s["id"] for s in parse_controller(duplicate, 1)["sensors"]],
+          ["arcconf:1:ctrl:asic", "arcconf:1:ctrl:asic-1"])
 
 
 def test_arcconf_parsing() -> None:
@@ -539,12 +685,13 @@ def test_history_config() -> None:
 
 def main() -> int:
     for test in (test_interpolation, test_mix, test_config_normalisation,
-                 test_config_merge, test_arcconf_parsing,
+                 test_config_merge, test_arcconf_parsing, test_arcconf_controller_parsing,
                  test_persistence, test_control_behaviour,
                  test_hwmon_empty_channel_one, test_emergency_ignores_mix,
                  test_corrupt_config_does_not_stop_control,
                  test_http_refuses_cross_site,
-                 test_history_persistence, test_history_config):
+                 test_history_persistence, test_history_config,
+                 test_sensor_naming_and_chart, test_control_temp_in_every_mode):
         test()
         print()
     if FAILURES:

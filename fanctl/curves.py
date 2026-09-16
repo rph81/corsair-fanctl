@@ -62,16 +62,22 @@ class FanController:
         return self.control_temp
 
     def _raw_target(self, fan: dict, temp: float | None) -> float:
+        # Track the control temperature in every mode, not just `curve`. It is a
+        # readout as much as a curve input: the UI shows it on the card and the
+        # chart plots it, and both used to freeze at the last curve-mode value
+        # the moment a channel was switched to fixed.
+        control_temp = None
+        if temp is not None:
+            control_temp = self._update_control_temp(temp, fan["hysteresis"])
+
         mode = fan["mode"]
         if mode == "off":
             return 0.0
         if mode == "fixed":
             return float(fan["fixed_duty"])
 
-        if temp is None:
+        if control_temp is None:
             return None  # caller substitutes the failsafe duty
-
-        control_temp = self._update_control_temp(temp, fan["hysteresis"])
         stop_below = fan.get("stop_below")
         if stop_below is not None and control_temp < stop_below:
             return 0.0

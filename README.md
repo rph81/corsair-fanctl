@@ -263,6 +263,9 @@ replaced outright, so they can be emptied or reshaped.
 | `hwmon:drivetemp:temp1` | SATA drive (needs the `drivetemp` module) |
 | `arcconf:1:slot3` | Drive in slot 3 of Adaptec controller 1 |
 | `arcconf:1:max` | The hottest drive on that controller |
+| `arcconf:1:ctrl:asic` | A named sensor on the HBA itself (also `inlet-ambient`, `top`, `bottom`) |
+| `arcconf:1:ctrl:max` | The hottest sensor on the HBA |
+| `arcconf:1:ctrl` | The HBA's single temperature, on firmware that reports only one |
 
 Ids are built from the *driver name*, not the `hwmonN` number, because the
 kernel does not guarantee stable hwmon numbering across reboots.
@@ -335,6 +338,45 @@ curl -X POST -H 'Content-Type: application/json' localhost:8899/api/fan/3 \
        "curve":[[35,20],[40,35],[45,60],[50,85],[55,100]]}'
 ```
 
+### The controller's own temperature
+
+The HBA is often the hottest thing in the case, and it is no more visible to
+hwmon than the drives are. A second report, `arcconf getconfig <n> AD`, carries
+the card's own sensors, and they appear both as chips above the drive table and
+as ordinary fan curve sources.
+
+Recent SmartHBA/SmartRAID firmware reports several named sensors:
+
+```
+arcconf:1:ctrl:inlet-ambient   41 C    air entering the card
+arcconf:1:ctrl:asic            48 C    the controller chip, normally the hottest
+arcconf:1:ctrl:top             43 C
+arcconf:1:ctrl:bottom          45 C
+arcconf:1:ctrl:max             48 C    whichever is hottest
+```
+
+Older firmware reports a single headline temperature instead, which becomes
+`arcconf:1:ctrl`. Where both are present the named sensors win, since the
+headline just repeats one of them.
+
+Point a fan at `arcconf:1:ctrl:max` and it tracks the card rather than the
+drives:
+
+```bash
+curl -X POST localhost:8899/api/fan/4 \
+  -d '{"name":"HBA","sensors":["arcconf:1:ctrl:max"],
+       "curve":[[40,20],[50,40],[60,70],[70,100]]}'
+```
+
+This second call is **best-effort**. If your firmware does not report sensors,
+or your `arcconf` build rejects the argument, the controller chips are simply
+absent and a note appears in the Storage panel — the drive temperatures, and any
+fan curve following them, keep working untouched.
+
+The controller serial number, world-wide name and SAS addresses are deliberately
+not parsed, so they can never reach `/api/state` — which is exactly the output
+people paste into bug reports.
+
 **Sensor ids are keyed on the physical slot** (`arcconf:1:slot3`), not on
 `/dev/sdX`. Kernel device letters are assigned in discovery order and can move
 between boots; "slot 3" stays the bay you actually pointed a fan at. Drives
@@ -373,6 +415,31 @@ flap in and out between polls.
 
 Only `arcconf` is implemented today. Other controllers (`storcli`, `perccli`,
 `smartctl` for plain SATA) would each need their own parser.
+
+## Naming sensors and choosing what is graphed
+
+**Sensors** in the header opens a dialog listing every detected sensor, grouped
+by source, with its live reading.
+
+*Rename* any of them. `Commander Pro · Probe 2` tells you nothing once the probe
+is cable-tied to a drive cage; `Drive cage intake` does. Names are stored
+server-side and applied centrally, so fan cards, the sensor pickers and the
+chart legend all agree, in every browser. The original name is kept underneath
+as a reminder, and clearing the box restores it.
+
+*Graph* controls what the history chart plots. Any sensor a fan is using is
+always graphed — its checkbox shows which fan rather than offering a choice that
+would be overridden. Tick anything else to add it, whether or not a fan uses it.
+Because the daemon records **every** sensor on every tick, a sensor added to the
+chart immediately shows its full back-history rather than starting from now.
+
+```jsonc
+"sensor_names": { "cpro:temp1": "Drive cage intake" },
+"ui": { "chart_sensors": ["hwmon:coretemp:temp1"] }
+```
+
+`sensor_names` is replaced wholesale by `PUT /api/config`, not merged: an absent
+key has to mean *removed*, which a recursive merge cannot express.
 
 ## Appearance
 

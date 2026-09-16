@@ -1,0 +1,83 @@
+Controllers found: 1
+----------------------------------------------------------------------
+Controller information
+----------------------------------------------------------------------
+   Controller Status                                     : Optimal
+   Controller Mode                                       : HBA
+   Channel description                                   : SCSI
+   Controller Model                                      : MSCC SmartHBA 2100-4i4e
+   Vendor ID                                             : 0x9005
+   Device ID                                             : 0x028F
+   Subsystem Vendor ID                                   : 0x9005
+   Subsystem Device ID                                   : 0x0906
+   Controller Serial Number                              : EXAMPLECTRLSN
+   Controller World Wide Name                            : 5000000000000FF0
+   Physical Slot                                         : UNKNOWN
+   Temperature                                           : 48 C/ 118 F (Normal)
+   Negotiated PCIe Data Rate                             : PCIe 3.0 x8(7880 MB/s)
+   Maximum Phy Link Rate                                 : 6 Gb/s
+   PCI Address (Domain:Bus:Device.Function)              : 0:1:0.0
+   Number of Ports                                       : 2
+   Defunct disk drive count                              : 0
+   NCQ status                                            : Enabled
+   Boot Controller                                       : False
+   Driver Name                                           : smartpqi
+   NVMe Supported                                        : No
+   NVRAM Checksum Status                                 : Passed
+   -------------------------------------------------------------------
+   Power Settings
+   -------------------------------------------------------------------
+   Power Consumption                                     : Not Available
+   Current Power Mode                                    : Maximum Performance
+   -------------------------------------------------------------------
+   Controller Version Information
+   -------------------------------------------------------------------
+   Firmware                                              : 1.98
+   Driver                                                : Linux 2.1.36-026
+   Hardware Revision                                     : B
+   SEEPROM Version                                       : 0
+   CPLD Revision                                         : Not Available
+   -------------------------------------------------------------------
+   Temperature Sensors Information
+   -------------------------------------------------------------------
+   Sensor ID                                             : 0
+   Current Value                                         : 41 deg C
+   Max Value Since Powered On                            : 42 deg C
+   Location                                              : Inlet Ambient
+
+   Sensor ID                                             : 1
+   Current Value                                         : 48 deg C
+   Max Value Since Powered On                            : 49 deg C
+   Location                                              : ASIC
+
+   Sensor ID                                             : 2
+   Current Value                                         : 43 deg C
+   Max Value Since Powered On                            : 44 deg C
+   Location                                              : Top
+
+   Sensor ID                                             : 3
+   Current Value                                         : 45 deg C
+   Max Value Since Powered On                            : 46 deg C
+   Location                                              : Bottom
+
+   -------------------------------------------------------------------
+   Connector information
+   -------------------------------------------------------------------
+   Connector #0
+      Connector name                                     : CN0
+      Connection Number                                  : 0
+      Functional Mode                                    : HBA
+      Connector Location                                 : Internal
+      SAS Address                                        : 5000000000000FF0
+      Phy Count                                          : 4
+      Maximum Phy Link Rate                              : 12 Gb/s
+
+
+   Connector #1
+      Connector name                                     : CN1
+      Connection Number                                  : 1
+      Functional Mode                                    : HBA
+      Connector Location                                 : External
+      SAS Address                                        : 5000000000000FF4
+      Phy Count                                          : 4
+      Maximum Phy Link Rate                              : 12 Gb/s

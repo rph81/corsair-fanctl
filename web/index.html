@@ -17,6 +17,7 @@
   </div>
   <div class="rails" id="rails"></div>
   <div class="spacer"></div>
+  <button id="btn-sensors">Sensors</button>
   <button id="btn-settings">Settings</button>
   <button id="btn-revert" disabled>Revert</button>
   <button id="btn-apply" class="primary" disabled>Apply changes</button>
@@ -36,6 +37,10 @@
       <button id="btn-storage-refresh">Refresh now</button>
     </div>
     <p class="banner inline" id="storage-error" hidden></p>
+    <div class="card-strip" id="controller-strip" hidden>
+      <span class="strip-label" id="controller-name">Controller</span>
+      <div class="chips" id="controller-chips"></div>
+    </div>
     <div class="table-scroll">
       <table class="disks" id="disks">
         <thead>
@@ -49,9 +54,10 @@
       </table>
     </div>
     <p class="curve-help">
-      Each drive is also a temperature source: pick it in any fan's
-      <em>Temperature sources</em> list, or use <em>Hottest drive</em> to follow
-      whichever drive is warmest.
+      Each drive <em>and each controller sensor</em> is also a temperature
+      source: pick it in any fan's <em>Temperature sources</em> list, or use
+      <em>Hottest drive</em> / <em>Hottest sensor</em> to follow whichever is
+      warmest.
     </p>
   </section>
 
@@ -76,6 +82,20 @@
     </p>
   </section>
 </main>
+
+<dialog id="sensors-dialog">
+  <h2>Sensors</h2>
+  <p class="hint-text">
+    Rename a sensor to something you will recognise, and choose what appears on
+    the history graph. Sensors a fan is using are always graphed.
+  </p>
+  <div id="sensor-rows"></div>
+  <footer>
+    <button id="sensors-reset">Reset all names</button>
+    <div class="spacer" style="flex:1"></div>
+    <button id="sensors-close" class="primary">Done</button>
+  </footer>
+</dialog>
 
 <dialog id="settings">
   <h2>Global settings</h2>
