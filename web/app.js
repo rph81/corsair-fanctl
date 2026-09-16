@@ -36,6 +36,7 @@ const state = {
   cards: new Map(),    // fan index -> refs
   catalogKey: '',
   history: [],
+  sensorReadingCells: new Map(),
   hidden: new Set(),   // chart series keys the viewer has switched off
 };
 
@@ -778,9 +779,15 @@ function updateStorage(storage) {
 
 function seriesForChart() {
   const sensorIds = new Set();
+  // Every mode, not just `curve`. A channel switched to fixed still reads its
+  // sensors and still shows a control temperature, so dropping it from the
+  // chart made the trace vanish for no reason the user could see.
   for (const fan of state.config.fans) {
-    if (fan.mode === 'curve') fan.sensors.forEach((id) => sensorIds.add(id));
+    fan.sensors.forEach((id) => sensorIds.add(id));
   }
+  // Plus anything picked explicitly in the Sensors dialog, which is how a
+  // sensor no fan uses gets onto the graph.
+  (state.config.ui.chart_sensors || []).forEach((id) => sensorIds.add(id));
   const labels = new Map(
     ((state.snapshot && state.snapshot.sensors) || []).map((s) => [s.id, s.label]));
 
@@ -1055,6 +1062,143 @@ function bindAppearance() {
   document.getElementById('btn-fav-add').onclick = addFavorite;
 }
 
+/* ---------------------------------------------------------- sensors dialog */
+
+const SOURCE_GROUPS = [
+  ['device', 'Commander Pro probes'],
+  ['storage', 'Storage controller'],
+  ['host', 'Host sensors'],
+];
+
+/** Which sensors a fan is using, mapped to the fan names using them. */
+function sensorsInUse() {
+  const used = new Map();
+  for (const fan of state.config.fans) {
+    for (const id of fan.sensors) {
+      if (!used.has(id)) used.set(id, []);
+      used.get(id).push(fan.name);
+    }
+  }
+  return used;
+}
+
+function renderSensorsDialog() {
+  const container = document.getElementById('sensor-rows');
+  const catalog = (state.snapshot && state.snapshot.sensors) || [];
+  const temps = (state.snapshot && state.snapshot.temps) || {};
+  const names = state.config.sensor_names || {};
+  const charted = new Set(state.config.ui.chart_sensors || []);
+  const used = sensorsInUse();
+
+  state.sensorReadingCells = new Map();
+
+  if (!catalog.length) {
+    container.replaceChildren(el('p', { class: 'hint-text', text: 'No sensors detected yet.' }));
+    return;
+  }
+
+  const groups = [];
+  for (const [source, title] of SOURCE_GROUPS) {
+    const entries = catalog.filter((c) => c.source === source);
+    if (!entries.length) continue;
+
+    const group = el('div', { class: 'sensor-group' }, el('h3', { text: title }));
+    for (const sensor of entries) {
+      const usedBy = used.get(sensor.id);
+      const fallback = sensor.default_label || sensor.label;
+
+      const input = el('input', {
+        type: 'text', maxlength: '40', placeholder: fallback,
+        value: names[sensor.id] || '',
+      });
+      input.addEventListener('change', () => renameSensor(sensor.id, input.value));
+
+      const box = el('input', { type: 'checkbox' });
+      box.checked = charted.has(sensor.id) || Boolean(usedBy);
+      // A sensor a fan reads is always graphed; the box shows that rather than
+      // offering a choice that would be overridden anyway.
+      box.disabled = Boolean(usedBy);
+      box.addEventListener('change', () => toggleChartSensor(sensor.id, box.checked));
+
+      const label = el('label', {
+        text: usedBy ? `in use: ${usedBy.join(', ')}` : 'graph',
+      });
+      label.addEventListener('click', () => { if (!box.disabled) box.click(); });
+
+      const value = temps[sensor.id];
+      const nameCell = el('div', { class: 'name' }, input);
+      if (names[sensor.id]) {
+        nameCell.append(el('div', { class: 'default-hint', text: fallback }));
+      }
+
+      const reading = el('span', {
+        class: 'reading',
+        text: value === undefined ? '—' : `${value.toFixed(1)}°`,
+      });
+      state.sensorReadingCells.set(sensor.id, reading);
+
+      group.append(el('div', { class: 'sensor-row' },
+        nameCell, reading, el('div', { class: 'graph' }, box, label),
+      ));
+    }
+    groups.push(group);
+  }
+  container.replaceChildren(...groups);
+}
+
+/** Poll refresh for the open dialog: values only, never the inputs. */
+function updateSensorDialogReadings() {
+  const temps = (state.snapshot && state.snapshot.temps) || {};
+  for (const [id, cell] of state.sensorReadingCells || []) {
+    const value = temps[id];
+    cell.textContent = value === undefined ? '—' : `${value.toFixed(1)}°`;
+  }
+}
+
+async function renameSensor(id, raw) {
+  const name = raw.trim().slice(0, 40);
+  const names = Object.assign({}, state.config.sensor_names);
+  if (name) names[id] = name; else delete names[id];
+  state.config.sensor_names = names;
+  // A partial PUT: the server merges, so this cannot disturb fan settings.
+  try {
+    await api('/api/config', { method: 'PUT', body: JSON.stringify({ sensor_names: names }) });
+  } catch (err) {
+    toast(err.message, true);
+    return;
+  }
+  renderSensorsDialog();
+}
+
+async function toggleChartSensor(id, on) {
+  const current = new Set(state.config.ui.chart_sensors || []);
+  if (on) current.add(id); else current.delete(id);
+  const chart_sensors = [...current];
+  state.config.ui.chart_sensors = chart_sensors;
+  await saveUi({ chart_sensors });
+  drawChart();
+}
+
+function bindSensorsDialog() {
+  document.getElementById('btn-sensors').onclick = () => {
+    renderSensorsDialog();
+    document.getElementById('sensors-dialog').showModal();
+  };
+  document.getElementById('sensors-close').onclick = () =>
+    document.getElementById('sensors-dialog').close();
+  document.getElementById('sensors-reset').onclick = async () => {
+    // Replacing the whole map is what clears it: a merge of {} would be a no-op.
+    state.config.sensor_names = {};
+    try {
+      await api('/api/config', { method: 'PUT', body: JSON.stringify({ sensor_names: {} }) });
+      toast('Sensor names reset');
+    } catch (err) {
+      toast(err.message, true);
+    }
+    renderSensorsDialog();
+  };
+}
+
 function bindSettings() {
   const bind = (id, apply) => {
     document.getElementById(id).addEventListener('input', (event) => {
@@ -1137,6 +1281,7 @@ async function poll() {
 
     updateLive(snapshot);
     updateStorage(snapshot.storage);
+    if (document.getElementById('sensors-dialog').open) updateSensorDialogReadings();
   } catch (err) {
     const banner = document.getElementById('banner');
     banner.hidden = false;
@@ -1161,6 +1306,7 @@ function main() {
   initToken();
   bindSettings();
   bindAppearance();
+  bindSensorsDialog();
   document.getElementById('btn-apply').onclick = applyChanges;
   document.getElementById('btn-revert').onclick = revertChanges;
   document.getElementById('chart-range').onchange = pollHistory;

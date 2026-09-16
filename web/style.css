@@ -351,3 +351,30 @@ table.disks .bar > i.low { background: var(--warn); }
 .chip.warm .reading { color: var(--warn); }
 .chip.hot { border-color: color-mix(in srgb, var(--bad) 60%, transparent); }
 .chip.hot .reading { color: var(--bad); font-weight: 600; }
+
+/* -------------------------------------------------------- sensors dialog */
+
+#sensors-dialog { width: min(680px, 94vw); }
+.sensor-group { margin-top: 16px; }
+.sensor-group > h3 {
+  font-size: 11px; text-transform: uppercase; letter-spacing: .6px;
+  color: var(--muted); margin-bottom: 6px;
+}
+.sensor-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 6px 0; border-bottom: 1px solid var(--line);
+}
+.sensor-row:last-child { border-bottom: none; }
+.sensor-row .name { flex: 1; min-width: 0; }
+.sensor-row .name input { width: 100%; }
+.sensor-row .reading {
+  font-family: var(--mono); font-size: 13px; width: 62px;
+  text-align: right; color: var(--muted); flex: none;
+}
+.sensor-row .graph { flex: none; display: flex; align-items: center; gap: 6px; }
+.sensor-row .graph label { font-size: 12px; color: var(--muted); cursor: pointer; }
+.sensor-row .graph input[disabled] + label { cursor: default; opacity: .7; }
+.sensor-row .default-hint {
+  font-size: 11px; color: var(--muted); margin-top: 2px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}

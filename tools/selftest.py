@@ -103,6 +103,84 @@ def test_config_normalisation() -> None:
     check("garbage input yields defaults", cfg.normalize("nonsense")["version"], 1)
 
 
+def test_sensor_naming_and_chart() -> None:
+    print("sensor naming and chart selection")
+    normalised = cfg.normalize({
+        "sensor_names": {
+            "cpro:temp1": "  Drive cage intake  ",   # trimmed
+            "cpro:temp2": "",                        # blank means "no name"
+            "cpro:temp3": "x" * 80,                  # capped
+            "bad-value": 123,                        # not a string
+            7: "numeric key",                        # not a string key
+        },
+        "ui": {"chart_sensors": ["a", "a", "b", 7, ""]},
+    })
+    names = normalised["sensor_names"]
+    check("name trimmed", names.get("cpro:temp1"), "Drive cage intake")
+    check("blank name dropped", "cpro:temp2" in names, False)
+    check("name length capped", len(names["cpro:temp3"]), 40)
+    check("non-string value dropped", "bad-value" in names, False)
+    check("chart sensors de-duplicated", normalised["ui"]["chart_sensors"], ["a", "b"])
+
+    check("defaults are empty", cfg.default_config()["sensor_names"], {})
+
+    # Renaming must not disturb anything else: the UI sends only this key.
+    current = cfg.default_config()
+    current["fans"][0]["name"] = "Front intake"
+    current["fans"][0]["sensors"] = ["cpro:temp1"]
+    merged = cfg.merge(current, {"sensor_names": {"cpro:temp1": "Intake"}})
+    check("fan survives a rename PUT", merged["fans"][0]["name"], "Front intake")
+    check("rename applied", merged["sensor_names"]["cpro:temp1"], "Intake")
+
+    # Clearing needs a whole-map replacement, which is what the reset button sends.
+    cleared = cfg.merge(merged, {"sensor_names": {}})
+    check("names can be cleared", cleared["sensor_names"], {})
+
+    # Removing one name is the same mechanism: an absent key must mean removed,
+    # which a recursive merge could not express.
+    two = cfg.merge(current, {"sensor_names": {"cpro:temp1": "A", "cpro:temp2": "B"}})
+    one = cfg.merge(two, {"sensor_names": {"cpro:temp2": "B"}})
+    check("a single name can be removed", one["sensor_names"], {"cpro:temp2": "B"})
+
+
+def test_control_temp_in_every_mode() -> None:
+    print("control temperature outside curve mode")
+    fan = cfg.default_config()["fans"][0]
+    fan["hysteresis"] = 0.0
+    fan["mode"] = "fixed"
+    fan["fixed_duty"] = 42
+    fan["ramp_up"] = 100.0
+    fan["ramp_down"] = 100.0
+    fan["spin_up_ms"] = 0
+
+    controller = FanController(1)
+    controller.duty = 42.0
+    controller._started = True
+
+    # A fixed channel still reads its sensors: the card and the chart show the
+    # temperature even though the curve is not driving the duty.
+    controller.step(fan, 45.0, dt=1.0, failsafe_duty=80)
+    close("fixed mode tracks the sensor", controller.control_temp, 45.0)
+    close("fixed mode holds its duty", controller.duty, 42.0)
+
+    controller.step(fan, 51.0, dt=1.0, failsafe_duty=80)
+    close("and keeps tracking as it moves", controller.control_temp, 51.0)
+    close("duty still fixed", controller.duty, 42.0)
+
+    # "off" behaves the same way for the readout.
+    fan["mode"] = "off"
+    controller.step(fan, 55.0, dt=1.0, failsafe_duty=80)
+    close("off mode still reports temperature", controller.control_temp, 55.0)
+    close("but stops the fan", controller.duty, 0.0)
+
+    # With no sensors there is nothing to report, in any mode.
+    fan["mode"] = "fixed"
+    controller = FanController(1)
+    controller.step(fan, None, dt=1.0, failsafe_duty=80)
+    check("no sensor means no reading", controller.control_temp, None)
+    close("fixed duty still applied", controller.target, 42.0)
+
+
 def test_persistence() -> None:
     print("config persistence")
     with tempfile.TemporaryDirectory() as tmp:
@@ -612,7 +690,8 @@ def main() -> int:
                  test_hwmon_empty_channel_one, test_emergency_ignores_mix,
                  test_corrupt_config_does_not_stop_control,
                  test_http_refuses_cross_site,
-                 test_history_persistence, test_history_config):
+                 test_history_persistence, test_history_config,
+                 test_sensor_naming_and_chart, test_control_temp_in_every_mode):
         test()
         print()
     if FAILURES:

@@ -416,6 +416,31 @@ flap in and out between polls.
 Only `arcconf` is implemented today. Other controllers (`storcli`, `perccli`,
 `smartctl` for plain SATA) would each need their own parser.
 
+## Naming sensors and choosing what is graphed
+
+**Sensors** in the header opens a dialog listing every detected sensor, grouped
+by source, with its live reading.
+
+*Rename* any of them. `Commander Pro · Probe 2` tells you nothing once the probe
+is cable-tied to a drive cage; `Drive cage intake` does. Names are stored
+server-side and applied centrally, so fan cards, the sensor pickers and the
+chart legend all agree, in every browser. The original name is kept underneath
+as a reminder, and clearing the box restores it.
+
+*Graph* controls what the history chart plots. Any sensor a fan is using is
+always graphed — its checkbox shows which fan rather than offering a choice that
+would be overridden. Tick anything else to add it, whether or not a fan uses it.
+Because the daemon records **every** sensor on every tick, a sensor added to the
+chart immediately shows its full back-history rather than starting from now.
+
+```jsonc
+"sensor_names": { "cpro:temp1": "Drive cage intake" },
+"ui": { "chart_sensors": ["hwmon:coretemp:temp1"] }
+```
+
+`sensor_names` is replaced wholesale by `PUT /api/config`, not merged: an absent
+key has to mean *removed*, which a recursive merge cannot express.
+
 ## Appearance
 
 **Settings -> Theme** switches between Dark, Light and System (which follows the

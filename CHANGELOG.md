@@ -6,6 +6,25 @@ This project follows [semantic versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Renameable sensors.** A new **Sensors** dialog lists every detected sensor
+  with its live reading and lets you give it a name you will recognise. Names
+  are applied server-side, so cards, pickers and the chart legend agree across
+  browsers.
+- **Any sensor can be graphed**, not just those a fan curve uses. Sensors in use
+  by a fan are always plotted; anything else is opt-in from the same dialog.
+  History already records every sensor, so a newly added one shows its full
+  back-history immediately.
+
+### Fixed
+- A channel switched to **fixed** mode stopped updating its control temperature
+  and vanished from the history chart, even with a sensor still selected. The
+  sensor selection is a readout as well as a curve input; both now track in
+  every mode.
+- `sensor_names` is replaced rather than deep-merged by `PUT /api/config`.
+  Merging made it impossible to remove a name, since an absent key was
+  indistinguishable from one left alone.
+
+### Added
 - **Controller temperatures.** The SAS HBA's own sensors are now read from
   `arcconf getconfig <n> AD` and exposed as fan curve sources: `…:ctrl:asic`,
   `…:ctrl:inlet-ambient`, `…:ctrl:top`, `…:ctrl:bottom` and `…:ctrl:max`, with a

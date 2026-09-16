@@ -17,6 +17,7 @@
   </div>
   <div class="rails" id="rails"></div>
   <div class="spacer"></div>
+  <button id="btn-sensors">Sensors</button>
   <button id="btn-settings">Settings</button>
   <button id="btn-revert" disabled>Revert</button>
   <button id="btn-apply" class="primary" disabled>Apply changes</button>
@@ -81,6 +82,20 @@
     </p>
   </section>
 </main>
+
+<dialog id="sensors-dialog">
+  <h2>Sensors</h2>
+  <p class="hint-text">
+    Rename a sensor to something you will recognise, and choose what appears on
+    the history graph. Sensors a fan is using are always graphed.
+  </p>
+  <div id="sensor-rows"></div>
+  <footer>
+    <button id="sensors-reset">Reset all names</button>
+    <div class="spacer" style="flex:1"></div>
+    <button id="sensors-close" class="primary">Done</button>
+  </footer>
+</dialog>
 
 <dialog id="settings">
   <h2>Global settings</h2>

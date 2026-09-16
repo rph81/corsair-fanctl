@@ -17,6 +17,10 @@ from typing import Any
 
 FAN_COUNT = 6
 MAX_FAVORITES = 10
+MAX_CHART_SENSORS = 32
+MAX_SENSOR_NAMES = 128
+MAX_SENSOR_NAME = 40
+MAX_SENSOR_ID = 128
 DEFAULT_HISTORY_FILE = "/var/lib/corsair-fanctl/history.json"
 MIN_FAILSAFE_DUTY = 20      # the duty used when a sensor is lost or on exit
 MIN_EMERGENCY_DUTY = 50     # the duty used when a sensor is over the limit
@@ -77,7 +81,11 @@ def default_config() -> dict:
             "theme": "dark",        # dark | light | system
             "accent": "#4aa3ff",
             "favorites": [],        # saved accent colours, newest first, max 10
+            "chart_sensors": [],    # extra sensors to plot beyond those a fan uses
         },
+        # Friendly names for sensors, keyed by sensor id. "Commander Pro Probe 2"
+        # means nothing; "Drive cage intake" does.
+        "sensor_names": {},
         "storage": {
             "enabled": True,
             "provider": "arcconf",
@@ -248,6 +256,27 @@ def normalize(raw: Any) -> dict:
                 favorites.append(colour)
     cfg["ui"]["favorites"] = favorites[:MAX_FAVORITES]
 
+    chart_sensors: list[str] = []
+    raw_chart = ui_raw.get("chart_sensors")
+    if isinstance(raw_chart, list):
+        for item in raw_chart:
+            if isinstance(item, str) and item and item not in chart_sensors:
+                chart_sensors.append(item[:MAX_SENSOR_ID])
+    cfg["ui"]["chart_sensors"] = chart_sensors[:MAX_CHART_SENSORS]
+
+    names: dict[str, str] = {}
+    raw_names = raw.get("sensor_names")
+    if isinstance(raw_names, dict):
+        for key, value in raw_names.items():
+            if not isinstance(key, str) or not key or not isinstance(value, str):
+                continue
+            label = value.strip()[:MAX_SENSOR_NAME]
+            if label:
+                names[key[:MAX_SENSOR_ID]] = label
+            if len(names) >= MAX_SENSOR_NAMES:
+                break
+    cfg["sensor_names"] = names
+
     store_raw = raw.get("storage") if isinstance(raw.get("storage"), dict) else {}
     store = cfg["storage"]
     store["enabled"] = bool(store_raw.get("enabled", store["enabled"]))
@@ -299,12 +328,22 @@ def merge(current: dict, patch: Any) -> dict:
     Fans are merged per channel rather than as a flat list, so patching one fan
     cannot disturb the other five. Lists inside a fan (`sensors`, `curve`) are
     still replaced outright, so they can be emptied or reshaped.
+
+    `sensor_names` replaces rather than merges. It is a map of user entries, not
+    a section of independent settings: under a recursive merge there would be no
+    way to *remove* a name, because an absent key is indistinguishable from one
+    left alone, and clearing the lot with `{}` would be a no-op. Clients send the
+    whole map.
     """
     if not isinstance(patch, dict):
         return normalize(current)
 
-    scalar_patch = {k: v for k, v in patch.items() if k != "fans"}
+    replaced = {"fans", "sensor_names"}
+    scalar_patch = {k: v for k, v in patch.items() if k not in replaced}
     merged = _deep_merge(current, scalar_patch)
+
+    if isinstance(patch.get("sensor_names"), dict):
+        merged["sensor_names"] = patch["sensor_names"]
 
     incoming = patch.get("fans")
     if isinstance(incoming, list):
