@@ -3,6 +3,21 @@
 All notable changes to this project are documented here.
 This project follows [semantic versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **Controller temperatures.** The SAS HBA's own sensors are now read from
+  `arcconf getconfig <n> AD` and exposed as fan curve sources: `…:ctrl:asic`,
+  `…:ctrl:inlet-ambient`, `…:ctrl:top`, `…:ctrl:bottom` and `…:ctrl:max`, with a
+  fallback to a single `…:ctrl` on firmware that reports one headline value.
+  They also show as chips above the drive table, with peak-since-power-on.
+
+  The extra call is best-effort: firmware without sensor support, or an arcconf
+  build that rejects the argument, leaves drive temperatures entirely unaffected.
+
+  The controller serial number, world-wide name and SAS addresses are not
+  parsed, so they cannot reach `/api/state`.
+
 ## [1.4.2]
 
 ### Changed

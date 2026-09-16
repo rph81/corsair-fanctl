@@ -662,14 +662,62 @@ function tempClass(drive) {
   return '';
 }
 
+/* The HBA has no published thermal limit the way a drive does, so these
+ * thresholds are fixed rather than derived: Adaptec rates these cards for an
+ * ASIC junction well above 70C, and inlet ambient should never be near it. */
+function controllerChipClass(temp) {
+  if (temp === null || temp === undefined) return 'chip';
+  if (temp >= 80) return 'chip hot';
+  if (temp >= 70) return 'chip warm';
+  return 'chip';
+}
+
+function updateController(storage) {
+  const strip = document.getElementById('controller-strip');
+  const info = storage.controller;
+  const sensors = (info && info.sensors) || [];
+
+  if (!sensors.length) {
+    strip.hidden = true;
+    return;
+  }
+  strip.hidden = false;
+
+  const name = document.getElementById('controller-name');
+  name.textContent = info.model || 'Controller';
+  name.title = info.firmware ? `firmware ${info.firmware}` : '';
+
+  document.getElementById('controller-chips').replaceChildren(
+    ...sensors.map((sensor) => {
+      const chip = el('span', { class: controllerChipClass(sensor.temperature) });
+      chip.append(el('span', { class: 'where', text: sensor.label }));
+      chip.append(el('span', {
+        class: 'reading',
+        text: sensor.temperature === null ? '—' : `${sensor.temperature.toFixed(0)}°`,
+      }));
+      if (sensor.temperature_max !== null && sensor.temperature_max !== undefined) {
+        chip.append(el('span', {
+          class: 'peak', text: `peak ${sensor.temperature_max.toFixed(0)}°`,
+        }));
+      }
+      return chip;
+    }));
+}
+
 function updateStorage(storage) {
   const card = document.getElementById('storage-card');
   if (!storage || !storage.enabled) { card.hidden = true; return; }
   card.hidden = false;
 
+  updateController(storage);
+
+  // A controller-report failure must not read as "storage is broken": the drive
+  // temperatures below it are still live.
   const errorNode = document.getElementById('storage-error');
-  errorNode.hidden = !storage.error;
-  if (storage.error) errorNode.textContent = storage.error;
+  const problem = storage.error
+    || (storage.controller_error ? `Controller temperatures: ${storage.controller_error}` : null);
+  errorNode.hidden = !problem;
+  if (problem) errorNode.textContent = problem;
 
   const stateTag = document.getElementById('storage-state');
   const drives = storage.drives || [];

@@ -68,16 +68,19 @@ def build_tree(root: str) -> tuple[str, str]:
 
 FAKE_ARCCONF = """#!/usr/bin/env python3
 import os, random, sys
-if sys.argv[1:4] != ["getconfig", "1", "PD"]:
+if sys.argv[1:3] != ["getconfig", "1"]:
     print("Invalid arguments"); sys.exit(1)
-fixture = {fixture!r}
-text = open(fixture).read()
+report = sys.argv[3] if len(sys.argv) > 3 else "PD"
+fixtures = {fixture!r}
+if report not in fixtures:
+    print("Invalid arguments"); sys.exit(1)
+text = open(fixtures[report]).read()
 # Jitter each drive's temperature so the panel visibly updates.
 out = []
 for line in text.splitlines():
-    if "Current Temperature" in line:
+    if "Current Temperature" in line or line.strip().startswith("Current Value"):
         key, _, _ = line.partition(":")
-        out.append(f"{{key}}: {{random.randint(38, 46)}} deg C")
+        out.append(f"{{key}}: {{random.randint(38, 52)}} deg C")
     else:
         out.append(line)
 print("\\n".join(out))
@@ -86,8 +89,9 @@ print("\\n".join(out))
 
 def build_fake_arcconf(root: str) -> str:
     """Write a stand-in for the arcconf binary that replays a captured report."""
-    fixture = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                           "fixtures", "arcconf-pd.txt")
+    here = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures")
+    fixture = {"PD": os.path.join(here, "arcconf-pd.txt"),
+               "AD": os.path.join(here, "arcconf-ad.txt")}
     path = os.path.join(root, "fake-arcconf")
     with open(path, "w", encoding="utf-8") as handle:
         handle.write(FAKE_ARCCONF.format(fixture=fixture))

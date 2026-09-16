@@ -18,6 +18,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from fanctl import backends, config as cfg  # noqa: E402
 from fanctl.arcconf import parse as parse_arcconf  # noqa: E402
+from fanctl.arcconf import parse_controller  # noqa: E402
 from fanctl.controller import Controller  # noqa: E402
 from fanctl.curves import FanController, interpolate  # noqa: E402
 from fanctl.history import History  # noqa: E402
@@ -222,6 +223,73 @@ def test_config_merge() -> None:
     merged = cfg.merge(current, full)
     check("full replacement wins", merged["fans"][0]["name"], "Renamed")
     check("full replacement clears old fan 3", merged["fans"][2]["name"], "Fan 3")
+
+
+def test_arcconf_controller_parsing() -> None:
+    print("arcconf controller parsing")
+    with open(os.path.join(FIXTURES, "arcconf-ad.txt"), encoding="utf-8") as handle:
+        info = parse_controller(handle.read(), controller=1)
+
+    check("model", info["model"], "MSCC SmartHBA 2100-4i4e")
+    check("firmware", info["firmware"], "1.98")
+    check("all four sensors found", len(info["sensors"]), 4)
+    check("ids slugged from location",
+          [s["id"] for s in info["sensors"]],
+          ["arcconf:1:ctrl:inlet-ambient", "arcconf:1:ctrl:asic",
+           "arcconf:1:ctrl:top", "arcconf:1:ctrl:bottom"])
+    close("asic temperature", info["sensors"][1]["temperature"], 48.0)
+    close("asic peak", info["sensors"][1]["temperature_max"], 49.0)
+
+    # The Connector section further down also has a "Location" key; it must not
+    # overwrite the last sensor's.
+    check("connector section did not bleed in", info["sensors"][3]["location"], "Bottom")
+
+    # Identifiers that must never reach the API.
+    blob = repr(info)
+    check("serial not parsed", "EXAMPLECTRLSN" in blob, False)
+    check("world-wide name not parsed", "5000000000000FF0" in blob, False)
+
+    # Older firmware: headline line only, no sensors section.
+    headline_only = """   Controller Model                    : Adaptec ASR-8805
+   Controller Serial Number            : SECRET123
+   Temperature                         : 52 C/ 125 F (Normal)
+   Firmware                            : 7.11
+"""
+    old = parse_controller(headline_only, 2)
+    check("falls back to the headline reading", len(old["sensors"]), 1)
+    check("fallback id", old["sensors"][0]["id"], "arcconf:2:ctrl")
+    close("fallback temperature", old["sensors"][0]["temperature"], 52.0)
+    check("fallback peak is unknown", old["sensors"][0]["temperature_max"], None)
+
+    # When both shapes are present the named sensors win, so the headline is not
+    # exposed a second time under a different id.
+    with open(os.path.join(FIXTURES, "arcconf-ad.txt"), encoding="utf-8") as handle:
+        both = parse_controller(handle.read(), 1)
+    check("headline not duplicated",
+          [s["id"] for s in both["sensors"] if s["id"].endswith(":ctrl")], [])
+
+    check("empty input", parse_controller("", 1)["sensors"], [])
+    check("garbage input", parse_controller("nonsense\nlines", 1)["sensors"], [])
+
+    # A sensor with no location falls back to its numeric id.
+    unlabelled = """   Sensor ID    : 7
+   Current Value : 60 deg C
+"""
+    check("unlabelled sensor id",
+          parse_controller(unlabelled, 1)["sensors"][0]["id"], "arcconf:1:ctrl:sensor7")
+
+    # Two sensors sharing a location must not collide.
+    duplicate = """   Sensor ID    : 0
+   Current Value : 40 deg C
+   Location      : ASIC
+
+   Sensor ID    : 1
+   Current Value : 44 deg C
+   Location      : ASIC
+"""
+    check("duplicate locations disambiguated",
+          [s["id"] for s in parse_controller(duplicate, 1)["sensors"]],
+          ["arcconf:1:ctrl:asic", "arcconf:1:ctrl:asic-1"])
 
 
 def test_arcconf_parsing() -> None:
@@ -539,7 +607,7 @@ def test_history_config() -> None:
 
 def main() -> int:
     for test in (test_interpolation, test_mix, test_config_normalisation,
-                 test_config_merge, test_arcconf_parsing,
+                 test_config_merge, test_arcconf_parsing, test_arcconf_controller_parsing,
                  test_persistence, test_control_behaviour,
                  test_hwmon_empty_channel_one, test_emergency_ignores_mix,
                  test_corrupt_config_does_not_stop_control,

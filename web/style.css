@@ -325,3 +325,29 @@ table.disks .bar > i.low { background: var(--warn); }
   display: none; padding: 0; text-align: center;
 }
 .swatch:hover .remove { display: block; }
+
+/* ----------------------------------------------- controller temperatures */
+
+.card-strip {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+  padding: 10px 12px; margin-bottom: 14px;
+  background: var(--bg); border: 1px solid var(--line); border-radius: 8px;
+}
+.card-strip .strip-label {
+  font-size: 12px; font-weight: 600; color: var(--muted);
+  white-space: nowrap; margin-right: 2px;
+}
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip {
+  display: inline-flex; align-items: baseline; gap: 6px;
+  padding: 3px 9px; border-radius: 20px;
+  border: 1px solid var(--line); background: var(--panel);
+  font-size: 12px; white-space: nowrap;
+}
+.chip .where { color: var(--muted); }
+.chip .reading { font-family: var(--mono); font-size: 13px; }
+.chip .peak { color: var(--muted); font-family: var(--mono); font-size: 11px; }
+.chip.warm { border-color: color-mix(in srgb, var(--warn) 55%, transparent); }
+.chip.warm .reading { color: var(--warn); }
+.chip.hot { border-color: color-mix(in srgb, var(--bad) 60%, transparent); }
+.chip.hot .reading { color: var(--bad); font-weight: 600; }
