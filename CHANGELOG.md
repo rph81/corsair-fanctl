@@ -3,7 +3,7 @@
 All notable changes to this project are documented here.
 This project follows [semantic versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.5.0]
 
 ### Added
 - **Renameable sensors.** A new **Sensors** dialog lists every detected sensor
