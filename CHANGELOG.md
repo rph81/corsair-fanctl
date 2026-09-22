@@ -3,6 +3,25 @@
 All notable changes to this project are documented here.
 This project follows [semantic versioning](https://semver.org/).
 
+## [1.6.0]
+
+### Added
+- **Hover readout on the history chart.** A crosshair snaps to the nearest
+  sample, every visible line gets a dot, and a readout lists each value at
+  that moment, highest first. The line nearest the pointer is emphasised.
+- **Drag to zoom.** Drag across the chart to zoom into that window, and again
+  to go deeper. **Zoom out** steps back a level; double-click, **Reset zoom**
+  or Esc return to the live view. The automatic refresh leaves a zoomed view
+  alone, since it is a fixed stretch of the past.
+- `/api/history` accepts `until`, so a zoomed chart fetches just its window
+  and spends the point budget there, revealing recorded detail rather than
+  stretching the points already on screen.
+
+### Changed
+- The chart canvas is only reallocated when its size changes, and hover
+  repaints the canvas without rebuilding the legend, so tracking the pointer
+  stays smooth and clicks on the legend are never swallowed mid-hover.
+
 ## [1.5.0]
 
 ### Added

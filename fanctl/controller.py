@@ -331,8 +331,9 @@ class Controller:
                 "config": self.config,
             }
 
-    def history(self, since: float = 0.0, max_points: int = 600) -> list[dict]:
-        return self._history.series(since, max_points)
+    def history(self, since: float = 0.0, max_points: int = 600,
+                until: float | None = None) -> list[dict]:
+        return self._history.series(since, max_points, until)
 
     def update_config(self, raw: dict) -> dict:
         with self._lock:

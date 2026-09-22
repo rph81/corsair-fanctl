@@ -54,15 +54,15 @@ Or download the release tarball, if git is not installed:
 
 ```bash
 curl -fsSL -o corsair-fanctl.tar.gz \
-  https://github.com/rph81/corsair-fanctl/releases/latest/download/corsair-fanctl-1.5.0.tar.gz
-tar -xzf corsair-fanctl.tar.gz && cd corsair-fanctl-1.5.0 && ./install.sh
+  https://github.com/rph81/corsair-fanctl/releases/latest/download/corsair-fanctl-1.6.0.tar.gz
+tar -xzf corsair-fanctl.tar.gz && cd corsair-fanctl-1.6.0 && ./install.sh
 ```
 
 To verify the download first (the checksum is published alongside it):
 
 ```bash
-curl -fsSL -O https://github.com/rph81/corsair-fanctl/releases/latest/download/corsair-fanctl-1.5.0.tar.gz.sha256
-sha256sum -c corsair-fanctl-1.5.0.tar.gz.sha256
+curl -fsSL -O https://github.com/rph81/corsair-fanctl/releases/latest/download/corsair-fanctl-1.6.0.tar.gz.sha256
+sha256sum -c corsair-fanctl-1.6.0.tar.gz.sha256
 ```
 
 Then open `http://<host-ip>:8899/`.
@@ -455,6 +455,18 @@ In the **History** chart, each legend entry is a toggle: click a series to
 hide or show it, shift-click to see it on its own, and **Show all** to bring
 everything back. That selection is remembered per browser, not on the server.
 
+**Reading and zooming the chart.** Hover anywhere on the chart and a crosshair
+snaps to the nearest sample, with a dot on every visible line and a readout of
+each value at that moment, sorted highest first. The line closest to the
+pointer is emphasised, so pointing at one trace reads out that trace.
+
+Drag across the chart to zoom into that stretch of time. The zoomed view asks
+the daemon for just that window, so it shows the real detail recorded there
+rather than stretching the points already on screen. Zoom again to go deeper;
+**Zoom out** steps back one level, and double-click, **Reset zoom** or Esc
+returns to the live view. A zoomed view is a fixed stretch of the past, so the
+automatic refresh leaves it alone until you zoom out.
+
 The chart history is saved to `/var/lib/corsair-fanctl/history.json` every
 five minutes and on shutdown, and read back at startup, so restarting the
 service does not wipe the chart. It is one bounded file overwritten in place,
@@ -515,7 +527,7 @@ with the header shown below are unaffected.
 | Method | Path | Purpose |
 |---|---|---|
 | `GET` | `/api/state` | Live snapshot: temps, RPM, duties, per-channel reason, sensor catalog, config |
-| `GET` | `/api/history?since=<epoch>&points=<n>` | Time series for charts |
+| `GET` | `/api/history?since=<epoch>&until=<epoch>&points=<n>` | Time series for charts; `until` bounds a zoomed window |
 | `GET` | `/api/config` | Current config |
 | `PUT` | `/api/config` | Replace the config (normalised, clamped, persisted) |
 | `POST` | `/api/fan/<1-6>` | Patch one fan's settings |

@@ -38,6 +38,12 @@ const state = {
   history: [],
   sensorReadingCells: new Map(),
   hidden: new Set(),   // chart series keys the viewer has switched off
+  zoom: null,          // { from, to } while the chart is zoomed into a window
+  zoomStack: [],       // the windows to step back out through
+  hover: null,         // { x, y } cursor position over the chart, in CSS px
+  drag: null,          // { startX, x } while a zoom selection is being dragged
+  chartGeom: null,     // the last paint's layout, for turning pixels into time
+  paintQueued: false,
 };
 
 const HIDDEN_KEY = 'fanctl-hidden-series';
@@ -812,12 +818,55 @@ function seriesForChart() {
   return series;
 }
 
+/** Full redraw: the canvas and the legend. Called when the data or the
+ *  series change. Hover and drag only repaint the canvas, via paintChart,
+ *  because rebuilding the legend sixty times a second would both waste work
+ *  and swallow clicks on it mid-hover. */
 function drawChart() {
+  paintChart();
+  renderLegend(seriesForChart());
+}
+
+function schedulePaint() {
+  if (state.paintQueued) return;
+  state.paintQueued = true;
+  requestAnimationFrame(() => { state.paintQueued = false; paintChart(); });
+}
+
+function fmtChartTime(epoch, span, withSeconds) {
+  const date = new Date(epoch * 1000);
+  const options = { hour: '2-digit', minute: '2-digit' };
+  if (withSeconds) options.second = '2-digit';
+  const time = date.toLocaleTimeString([], options);
+  if (span > 20 * 3600 || date.toDateString() !== new Date().toDateString()) {
+    return `${date.toLocaleDateString([], { weekday: 'short' })} ${time}`;
+  }
+  return time;
+}
+
+/** Index of the sample nearest `t`, by binary search on the sorted times. */
+function nearestSample(times, t) {
+  let lo = 0;
+  let hi = times.length - 1;
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1;
+    if (times[mid] < t) lo = mid; else hi = mid;
+  }
+  return Math.abs(times[lo] - t) <= Math.abs(times[hi] - t) ? lo : hi;
+}
+
+function paintChart() {
   const canvas = document.getElementById('chart');
   const dpr = window.devicePixelRatio || 1;
   const width = canvas.clientWidth, height = canvas.clientHeight;
-  canvas.width = width * dpr;
-  canvas.height = height * dpr;
+  if (!width || !height) return;
+  // Reallocating the backing store is far costlier than drawing, and hover
+  // repaints every frame, so only resize when the element actually did.
+  const backingW = Math.round(width * dpr), backingH = Math.round(height * dpr);
+  if (canvas.width !== backingW || canvas.height !== backingH) {
+    canvas.width = backingW;
+    canvas.height = backingH;
+  }
 
   const ctx = canvas.getContext('2d');
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -827,9 +876,11 @@ function drawChart() {
   const plotW = width - pad.l - pad.r;
   const plotH = height - pad.t - pad.b;
 
-  const styles = getComputedStyle(document.body);
+  const styles = getComputedStyle(document.documentElement);
   const lineColor = styles.getPropertyValue('--line').trim() || '#2a323e';
   const mutedColor = styles.getPropertyValue('--muted').trim() || '#8b98a9';
+  const panelColor = styles.getPropertyValue('--panel').trim() || '#161b23';
+  const accent = styles.getPropertyValue('--accent').trim() || '#4aa3ff';
 
   ctx.strokeStyle = lineColor;
   ctx.fillStyle = mutedColor;
@@ -845,31 +896,41 @@ function drawChart() {
     ctx.fillText(String(value), pad.l - 6, y + 3);
   }
 
-  if (state.history.length < 2) {
+  const history = state.history;
+  if (history.length < 2) {
     ctx.textAlign = 'center';
-    ctx.fillText('collecting data…', width / 2, height / 2);
-    document.getElementById('legend').replaceChildren();
+    ctx.fillText(state.zoom ? 'no samples in this window' : 'collecting data…', width / 2, height / 2);
+    state.chartGeom = null;
+    hideChartTip();
     return;
   }
 
-  const times = state.history.map((s) => s.t);
-  const tMin = times[0], tMax = times[times.length - 1];
+  const times = history.map((s) => s.t);
+  // Zoomed, the window is exactly what was selected, even where it runs past
+  // the first or last sample; otherwise it spans the data.
+  const tMin = state.zoom ? state.zoom.from : times[0];
+  const tMax = state.zoom ? state.zoom.to : times[times.length - 1];
   const span = Math.max(tMax - tMin, 1);
   const xAt = (t) => pad.l + ((t - tMin) / span) * plotW;
   const yAt = (v) => pad.t + plotH - (clamp(v, 0, 100) / 100) * plotH;
+  state.chartGeom = { pad, plotW, plotH, tMin, tMax, span };
 
-  ctx.textAlign = 'center';
+  const withSeconds = span < 900;
+  ctx.fillStyle = mutedColor;
   for (let i = 0; i <= 4; i++) {
     const t = tMin + (span * i) / 4;
-    const label = new Date(t * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    ctx.fillText(label, xAt(t), height - 6);
+    ctx.textAlign = i === 0 ? 'left' : i === 4 ? 'right' : 'center';
+    ctx.fillText(fmtChartTime(t, span, withSeconds), xAt(t), height - 6);
   }
 
-  const series = seriesForChart();
+  const series = seriesForChart().filter((item) => !state.hidden.has(item.key));
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(pad.l, pad.t - 2, plotW, plotH + 4);
+  ctx.clip();
   ctx.lineWidth = 1.6;
   ctx.lineJoin = 'round';
   for (const item of series) {
-    if (state.hidden.has(item.key)) continue;
     ctx.strokeStyle = item.color;
     ctx.setLineDash(item.kind === 'duty' ? [4, 3] : []);
     ctx.beginPath();
@@ -882,8 +943,217 @@ function drawChart() {
     ctx.stroke();
   }
   ctx.setLineDash([]);
+  ctx.restore();
 
-  renderLegend(series);
+  // The window being dragged out for zooming.
+  if (state.drag) {
+    const a = clamp(Math.min(state.drag.startX, state.drag.x), pad.l, pad.l + plotW);
+    const b = clamp(Math.max(state.drag.startX, state.drag.x), pad.l, pad.l + plotW);
+    ctx.fillStyle = hexToRgba(accent, 0.14);
+    ctx.fillRect(a, pad.t, b - a, plotH);
+    ctx.strokeStyle = hexToRgba(accent, 0.8);
+    ctx.lineWidth = 1;
+    ctx.strokeRect(Math.round(a) + 0.5, pad.t + 0.5, Math.round(b - a), plotH - 1);
+    hideChartTip();
+    return;
+  }
+
+  // Hover: a crosshair on the nearest sample, a dot on every visible line,
+  // and a readout of each value at that moment. The line closest to the
+  // cursor is emphasised, so pointing at one trace reads out that trace.
+  if (!state.hover) { hideChartTip(); return; }
+  const cursorT = tMin + ((clamp(state.hover.x, pad.l, pad.l + plotW) - pad.l) / plotW) * span;
+  const index = nearestSample(times, cursorT);
+  const sampleT = times[index];
+  if (sampleT < tMin || sampleT > tMax) { hideChartTip(); return; }
+  const x = Math.round(xAt(sampleT)) + 0.5;
+
+  const entries = [];
+  for (const item of series) {
+    const value = item.values[index];
+    if (value === undefined || value === null) continue;
+    entries.push({ key: item.key, label: item.label, kind: item.kind,
+                   color: item.color, value, y: yAt(value) });
+  }
+  let nearest = null;
+  for (const entry of entries) {
+    if (!nearest || Math.abs(entry.y - state.hover.y) < Math.abs(nearest.y - state.hover.y)) {
+      nearest = entry;
+    }
+  }
+
+  ctx.save();
+  ctx.strokeStyle = mutedColor;
+  ctx.globalAlpha = 0.7;
+  ctx.setLineDash([3, 3]);
+  ctx.beginPath();
+  ctx.moveTo(x, pad.t);
+  ctx.lineTo(x, pad.t + plotH);
+  ctx.stroke();
+  ctx.restore();
+  for (const entry of entries) {
+    const emphasised = nearest && entry.key === nearest.key;
+    ctx.beginPath();
+    ctx.arc(x, entry.y, emphasised ? 5 : 3, 0, Math.PI * 2);
+    ctx.fillStyle = entry.color;
+    ctx.fill();
+    ctx.lineWidth = emphasised ? 2 : 1.5;
+    ctx.strokeStyle = panelColor;
+    ctx.stroke();
+  }
+  showChartTip(x, sampleT, span, entries, nearest ? nearest.key : null);
+}
+
+function hexToRgba(colour, alpha) {
+  const match = /^#?([0-9a-f]{6})$/i.exec((colour || '').trim());
+  if (!match) return `rgba(74,163,255,${alpha})`;
+  const value = parseInt(match[1], 16);
+  return `rgba(${(value >> 16) & 255},${(value >> 8) & 255},${value & 255},${alpha})`;
+}
+
+function showChartTip(x, time, span, entries, nearestKey) {
+  const tip = document.getElementById('chart-tip');
+  const wrap = document.getElementById('chart-wrap');
+  if (!entries.length) { hideChartTip(); return; }
+  const rows = entries.slice().sort((a, b) => b.value - a.value).map((entry) => {
+    const value = entry.kind === 'duty' ? `${Math.round(entry.value)}%` : `${entry.value.toFixed(1)}°C`;
+    return el('div', { class: `tip-row${entry.key === nearestKey ? ' near' : ''}` },
+      el('i', { style: `background:${entry.color}` }),
+      el('span', { class: 'tip-label', text: entry.label }),
+      el('b', { text: value }));
+  });
+  tip.replaceChildren(
+    el('div', { class: 'tip-time', text: fmtChartTime(time, span, true) }), ...rows);
+  tip.hidden = false;
+  const geom = state.chartGeom;
+  const tipW = tip.offsetWidth;
+  const left = x + 14 + tipW > wrap.clientWidth ? x - 14 - tipW : x + 14;
+  tip.style.left = `${Math.max(0, left)}px`;
+  tip.style.top = `${geom ? geom.pad.t : 0}px`;
+}
+
+function hideChartTip() {
+  const tip = document.getElementById('chart-tip');
+  if (tip && !tip.hidden) tip.hidden = true;
+}
+
+/* -- zoom -- */
+
+function chartPoint(event) {
+  const rect = document.getElementById('chart').getBoundingClientRect();
+  return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+}
+
+function inPlot(point) {
+  const g = state.chartGeom;
+  return Boolean(g) && point.x >= g.pad.l && point.x <= g.pad.l + g.plotW
+    && point.y >= g.pad.t && point.y <= g.pad.t + g.plotH;
+}
+
+function timeAtX(x) {
+  const g = state.chartGeom;
+  return g.tMin + ((clamp(x, g.pad.l, g.pad.l + g.plotW) - g.pad.l) / g.plotW) * g.span;
+}
+
+function zoomTo(from, to) {
+  // Below about twenty seconds there are only a handful of samples to show.
+  if (to - from < 20) {
+    const middle = (from + to) / 2;
+    from = middle - 10;
+    to = middle + 10;
+  }
+  state.zoomStack.push(state.zoom);
+  state.zoom = { from, to };
+  loadZoomed();
+}
+
+/** Fetch just the zoomed window from the daemon, so the decimation budget is
+ *  spent there and zooming reveals real detail rather than stretched pixels. */
+async function loadZoomed() {
+  const { from, to } = state.zoom;
+  syncZoomUi();
+  try {
+    const data = await api(`/api/history?since=${from.toFixed(1)}&until=${to.toFixed(1)}&points=600`);
+    if (!state.zoom || state.zoom.from !== from) return;   // zoomed again meanwhile
+    state.history = data.samples;
+  } catch (err) {
+    toast(err.message, true);
+  }
+  drawChart();
+}
+
+function zoomOut() {
+  if (!state.zoom) return;
+  state.zoom = state.zoomStack.pop() || null;
+  if (state.zoom) loadZoomed();
+  else { syncZoomUi(); pollHistory(); }
+}
+
+function resetZoom() {
+  if (!state.zoom) return;
+  state.zoom = null;
+  state.zoomStack = [];
+  syncZoomUi();
+  pollHistory();
+}
+
+function syncZoomUi() {
+  const zoomed = Boolean(state.zoom);
+  document.getElementById('btn-zoom-out').hidden = !zoomed;
+  document.getElementById('btn-zoom-reset').hidden = !zoomed || state.zoomStack.length < 2;
+  const tag = document.getElementById('zoom-tag');
+  tag.hidden = !zoomed;
+  if (zoomed) {
+    const span = state.zoom.to - state.zoom.from;
+    const withSeconds = span < 900;
+    tag.textContent = `${fmtChartTime(state.zoom.from, span, withSeconds)} – `
+      + `${fmtChartTime(state.zoom.to, span, withSeconds)}`;
+  }
+  document.getElementById('chart-range').disabled = zoomed;
+}
+
+function bindChart() {
+  const canvas = document.getElementById('chart');
+  canvas.addEventListener('pointermove', (event) => {
+    const point = chartPoint(event);
+    if (state.drag) { state.drag.x = point.x; schedulePaint(); return; }
+    state.hover = inPlot(point) ? point : null;
+    schedulePaint();
+  });
+  canvas.addEventListener('pointerleave', () => {
+    if (state.drag) return;
+    state.hover = null;
+    schedulePaint();
+  });
+  canvas.addEventListener('pointerdown', (event) => {
+    if (event.button !== 0) return;
+    const point = chartPoint(event);
+    if (!inPlot(point)) return;
+    state.drag = { startX: point.x, x: point.x };
+    try { canvas.setPointerCapture(event.pointerId); } catch (_) { /* optional */ }
+    schedulePaint();
+  });
+  const finish = (event) => {
+    if (!state.drag) return;
+    const { startX, x } = state.drag;
+    state.drag = null;
+    try { canvas.releasePointerCapture(event.pointerId); } catch (_) { /* already gone */ }
+    // A drag of a few pixels is a click, not a selection.
+    if (Math.abs(x - startX) >= 8 && state.chartGeom) {
+      const a = timeAtX(startX), b = timeAtX(x);
+      zoomTo(Math.min(a, b), Math.max(a, b));
+    } else {
+      schedulePaint();
+    }
+  };
+  canvas.addEventListener('pointerup', finish);
+  canvas.addEventListener('pointercancel', () => { state.drag = null; schedulePaint(); });
+  canvas.addEventListener('dblclick', (event) => { event.preventDefault(); resetZoom(); });
+  document.getElementById('btn-zoom-out').onclick = zoomOut;
+  document.getElementById('btn-zoom-reset').onclick = resetZoom;
+  window.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && state.zoom && !document.querySelector('dialog[open]')) resetZoom();
+  });
 }
 
 /* Each legend entry is a toggle: click hides or shows that series, shift-click
@@ -1292,7 +1562,9 @@ async function poll() {
 }
 
 async function pollHistory() {
-  if (!state.config) return;
+  // A zoomed window is a fixed stretch of the past; refreshing it to "the
+  // last N minutes" would yank the view away mid-inspection.
+  if (!state.config || state.zoom) return;
   try {
     const seconds = Number(document.getElementById('chart-range').value);
     const since = Date.now() / 1000 - seconds;
@@ -1310,6 +1582,7 @@ function main() {
   document.getElementById('btn-apply').onclick = applyChanges;
   document.getElementById('btn-revert').onclick = revertChanges;
   document.getElementById('chart-range').onchange = pollHistory;
+  bindChart();
   loadHidden();
   document.getElementById('btn-legend-all').onclick = () => {
     state.hidden.clear();
@@ -1322,7 +1595,7 @@ function main() {
       toast('Polling the controller…');
     } catch (err) { toast(err.message, true); }
   };
-  window.addEventListener('resize', drawChart);
+  window.addEventListener('resize', () => { hideChartTip(); drawChart(); });
   window.addEventListener('beforeunload', (event) => {
     if (state.dirty) { event.preventDefault(); event.returnValue = ''; }
   });

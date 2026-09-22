@@ -683,6 +683,34 @@ def test_history_config() -> None:
         check("other history settings still apply", updated["history"]["seconds"], 600)
 
 
+def test_history_window() -> None:
+    print("history window for zooming")
+    history = History(3600, 2.0)
+    for t in range(1000, 1100, 2):                 # 50 samples, 2 s apart
+        history.append(_sample(float(t)))
+
+    everything = history.series(since=0)
+    check("no bounds returns all samples", len(everything), 50)
+
+    # A zoomed chart asks for just its window; nothing outside may leak in.
+    window = history.series(since=1020, until=1040)
+    check("window is bounded on both sides",
+          (window[0]["t"], window[-1]["t"]), (1020.0, 1040.0))
+    check("window has every sample in it", len(window), 11)
+
+    # The decimation budget is spent on the window, not the whole history,
+    # which is what makes zooming reveal detail rather than stretch pixels.
+    coarse = history.series(since=0, max_points=10)
+    fine = history.series(since=1020, until=1040, max_points=10)
+    check("whole range decimates to the budget", len(coarse), 10)
+    check("a zoomed window keeps its full resolution", len(fine), 10)
+    check("zoomed samples are denser than the overview",
+          (fine[1]["t"] - fine[0]["t"]) < (coarse[1]["t"] - coarse[0]["t"]), True)
+
+    check("an empty window is empty, not an error",
+          history.series(since=5000, until=6000), [])
+
+
 def main() -> int:
     for test in (test_interpolation, test_mix, test_config_normalisation,
                  test_config_merge, test_arcconf_parsing, test_arcconf_controller_parsing,
@@ -690,7 +718,7 @@ def main() -> int:
                  test_hwmon_empty_channel_one, test_emergency_ignores_mix,
                  test_corrupt_config_does_not_stop_control,
                  test_http_refuses_cross_site,
-                 test_history_persistence, test_history_config,
+                 test_history_persistence, test_history_config, test_history_window,
                  test_sensor_naming_and_chart, test_control_temp_in_every_mode):
         test()
         print()
