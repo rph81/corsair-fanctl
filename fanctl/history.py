@@ -57,10 +57,17 @@ class History:
             self._samples.append(sample)
             self._dirty = True
 
-    def series(self, since: float = 0.0, max_points: int = 600) -> list[dict]:
-        """Return samples newer than `since`, decimated to at most `max_points`."""
+    def series(self, since: float = 0.0, max_points: int = 600,
+               until: float | None = None) -> list[dict]:
+        """Return samples in [since, until], decimated to at most `max_points`.
+
+        `until` is what makes zooming useful: a zoomed chart asks for just its
+        window, so the decimation budget is spent on that window rather than
+        the chart stretching the few points it already had.
+        """
         with self._lock:
-            samples = [s for s in self._samples if s["t"] >= since]
+            samples = [s for s in self._samples
+                       if s["t"] >= since and (until is None or s["t"] <= until)]
         if len(samples) <= max_points:
             return samples
         stride = len(samples) / max_points

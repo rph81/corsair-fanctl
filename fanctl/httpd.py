@@ -173,7 +173,13 @@ class Handler(BaseHTTPRequestHandler):
         if parts == ["history"] and method == "GET":
             since = float(query.get("since", ["0"])[0] or 0)
             points = int(query.get("points", ["600"])[0] or 600)
-            self._json({"samples": controller.history(since, max(10, min(2000, points)))})
+            raw_until = (query.get("until", [""])[0] or "").strip()
+            until = float(raw_until) if raw_until else None
+            for name, value in (("since", since), ("until", until)):
+                if value is not None and value != value:        # NaN
+                    raise ValueError(f"{name} must be a number")
+            self._json({"samples": controller.history(
+                since, max(10, min(2000, points)), until)})
             return
 
         if parts == ["config"]:

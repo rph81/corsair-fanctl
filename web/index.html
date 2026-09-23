@@ -64,7 +64,10 @@
   <section class="card chart-card">
     <div class="chart-head">
       <h2>History</h2>
+      <span class="tag" id="zoom-tag" hidden></span>
       <div class="spacer"></div>
+      <button type="button" id="btn-zoom-out" hidden>Zoom out</button>
+      <button type="button" id="btn-zoom-reset" hidden>Reset zoom</button>
       <select id="chart-range">
         <option value="300">5 minutes</option>
         <option value="900" selected>15 minutes</option>
@@ -72,13 +75,20 @@
         <option value="21600">6 hours</option>
       </select>
     </div>
-    <canvas id="chart"></canvas>
+    <div class="chart-wrap" id="chart-wrap">
+      <canvas id="chart"></canvas>
+      <div class="chart-tip" id="chart-tip" hidden></div>
+    </div>
     <div class="legend-row">
       <div class="legend" id="legend"></div>
       <button type="button" id="btn-legend-all" class="legend-all" hidden>Show all</button>
     </div>
     <p class="curve-help" id="legend-help" hidden>
       Click a series to hide or show it · shift-click to see it on its own
+    </p>
+    <p class="curve-help">
+      Hover the chart to read every value at that moment · drag across it to zoom in ·
+      double-click or Esc to zoom back out
     </p>
   </section>
 </main>
