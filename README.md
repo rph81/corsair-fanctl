@@ -54,15 +54,15 @@ Or download the release tarball, if git is not installed:
 
 ```bash
 curl -fsSL -o corsair-fanctl.tar.gz \
-  https://github.com/rph81/corsair-fanctl/releases/latest/download/corsair-fanctl-1.6.0.tar.gz
-tar -xzf corsair-fanctl.tar.gz && cd corsair-fanctl-1.6.0 && ./install.sh
+  https://github.com/rph81/corsair-fanctl/releases/latest/download/corsair-fanctl-1.7.0.tar.gz
+tar -xzf corsair-fanctl.tar.gz && cd corsair-fanctl-1.7.0 && ./install.sh
 ```
 
 To verify the download first (the checksum is published alongside it):
 
 ```bash
-curl -fsSL -O https://github.com/rph81/corsair-fanctl/releases/latest/download/corsair-fanctl-1.6.0.tar.gz.sha256
-sha256sum -c corsair-fanctl-1.6.0.tar.gz.sha256
+curl -fsSL -O https://github.com/rph81/corsair-fanctl/releases/latest/download/corsair-fanctl-1.7.0.tar.gz.sha256
+sha256sum -c corsair-fanctl-1.7.0.tar.gz.sha256
 ```
 
 Then open `http://<host-ip>:8899/`.
@@ -526,7 +526,7 @@ with the header shown below are unaffected.
 
 | Method | Path | Purpose |
 |---|---|---|
-| `GET` | `/api/state` | Live snapshot: temps, RPM, duties, per-channel reason, sensor catalog, config |
+| `GET` | `/api/state` | Live snapshot: temps, RPM, duties, per-channel reason, sensor catalog, config, and the host's physical NICs (`nics`: name, up, speed_mbit) |
 | `GET` | `/api/history?since=<epoch>&until=<epoch>&points=<n>` | Time series for charts; `until` bounds a zoomed window |
 | `GET` | `/api/config` | Current config |
 | `PUT` | `/api/config` | Replace the config (normalised, clamped, persisted) |
@@ -534,6 +534,12 @@ with the header shown below are unaffected.
 | `POST` | `/api/identify/<1-6>` | Run a channel at a duty briefly: `{"duty":100,"seconds":5}` |
 | `POST` | `/api/storage/refresh` | Poll the storage controller immediately |
 | `POST` | `/api/reconnect` | Drop and re-open the device |
+
+`nics` is not used for fan control. The Proxmox API reports no link speeds,
+and this daemon already runs on the host, so it reads each physical NIC's
+speed and link state from `/sys/class/net` for dashboards such as
+[proxmox-rackdash](https://github.com/rph81/proxmox-rackdash) to scale their
+network gauges. A NIC with no cable reports `up: false` and no speed.
 
 ```bash
 # Put the drive-cage fan on a fixed 35%

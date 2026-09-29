@@ -24,6 +24,7 @@ from fanctl.curves import FanController, interpolate  # noqa: E402
 from fanctl.history import History  # noqa: E402
 from fanctl.httpd import make_server  # noqa: E402
 from fanctl.sensors import mix  # noqa: E402
+from fanctl.nics import read_nics  # noqa: E402
 
 FIXTURES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures")
 
@@ -711,6 +712,35 @@ def test_history_window() -> None:
           history.series(since=5000, until=6000), [])
 
 
+def test_nics() -> None:
+    print("host network interfaces")
+    with tempfile.TemporaryDirectory() as root:
+        def iface(name, *, device=True, **files):
+            base = os.path.join(root, name)
+            os.makedirs(base)
+            if device:
+                os.makedirs(os.path.join(base, "device"))
+            for key, value in files.items():
+                with open(os.path.join(base, key), "w") as handle:
+                    handle.write(value + "\n")
+
+        iface("enp1s0", operstate="up", carrier="1", speed="10000")
+        # A NIC with no cable: the kernel refuses to read `speed` (no file here).
+        iface("eno1", operstate="down", carrier="0")
+        iface("vmbr0", device=False, operstate="up", speed="10000")     # bridge
+        iface("tap100i0", device=False, operstate="unknown")            # guest tap
+        iface("enp2s0", operstate="up", carrier="1", speed="-1")        # unknown speed
+
+        found = {n["name"]: n for n in read_nics(root)}
+        check("only hardware interfaces listed", sorted(found), ["eno1", "enp1s0", "enp2s0"])
+        check("connected 10G NIC", (found["enp1s0"]["up"], found["enp1s0"]["speed_mbit"]),
+              (True, 10000))
+        check("unplugged NIC is down with no speed",
+              (found["eno1"]["up"], found["eno1"]["speed_mbit"]), (False, None))
+        check("speed -1 means unknown", found["enp2s0"]["speed_mbit"], None)
+    check("missing sysfs is an empty list", read_nics("/nonexistent/net"), [])
+
+
 def main() -> int:
     for test in (test_interpolation, test_mix, test_config_normalisation,
                  test_config_merge, test_arcconf_parsing, test_arcconf_controller_parsing,
@@ -719,7 +749,8 @@ def main() -> int:
                  test_corrupt_config_does_not_stop_control,
                  test_http_refuses_cross_site,
                  test_history_persistence, test_history_config, test_history_window,
-                 test_sensor_naming_and_chart, test_control_temp_in_every_mode):
+                 test_sensor_naming_and_chart, test_control_temp_in_every_mode,
+                 test_nics):
         test()
         print()
     if FAILURES:
