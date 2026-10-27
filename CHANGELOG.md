@@ -3,6 +3,14 @@
 All notable changes to this project are documented here.
 This project follows [semantic versioning](https://semver.org/).
 
+## [1.7.0]
+
+### Added
+- `/api/state` now includes `nics`: each physical network interface on the
+  host with its link speed and whether it is up, read from `/sys/class/net`.
+  The Proxmox API has no link speeds, so this lets proxmox-rackdash scale its
+  network dials to the host's real capacity, counting only connected NICs.
+
 ## [1.6.0]
 
 ### Added

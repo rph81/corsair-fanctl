@@ -12,7 +12,7 @@ import logging
 import threading
 import time
 
-from . import __version__, arcconf, backends, config as config_module, sensors
+from . import __version__, arcconf, backends, config as config_module, nics, sensors
 from .curves import FanController
 from .history import History
 
@@ -55,6 +55,7 @@ class Controller:
 
         self._host = sensors.HostSensors()
         self._storage = arcconf.ArcconfSensors(self.config["storage"])
+        self._nics = nics.Nics()
         self._fans = {i: FanController(i) for i in range(1, backends.FAN_COUNT + 1)}
         self._written: dict[int, float] = {}
         self._last_write = time.monotonic()
@@ -328,6 +329,8 @@ class Controller:
                 "fans": fans,
                 "sensors": catalog,
                 "storage": self._storage.status(),
+                # Host NIC speeds, for dashboards; the Proxmox API has none.
+                "nics": self._nics.status(),
                 "config": self.config,
             }
 
