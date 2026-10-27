@@ -9,10 +9,13 @@ jobs:
   selftest:
     runs-on: ubuntu-latest
     strategy:
+      # One version failing must not cancel the others: each result is wanted.
+      fail-fast: false
       matrix:
         # Proxmox VE 8 ships Python 3.11 (Debian 12); PVE 9 ships 3.13
-        # (Debian 13). 3.9 is the documented floor.
-        python: ["3.9", "3.11", "3.13"]
+        # (Debian 13). 3.11 is the floor; 3.9 is end-of-life and gone from
+        # current runners.
+        python: ["3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

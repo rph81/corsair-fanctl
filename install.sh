@@ -37,9 +37,9 @@ done
 # ---------------------------------------------------------------- prerequisites
 
 command -v python3 >/dev/null || die "python3 is required (apt install python3)"
-python3 - <<'PY' || die "python 3.9 or newer is required"
+python3 - <<'PY' || die "python 3.11 or newer is required"
 import sys
-sys.exit(0 if sys.version_info >= (3, 9) else 1)
+sys.exit(0 if sys.version_info >= (3, 11) else 1)
 PY
 info "python: $(python3 --version)"
 
