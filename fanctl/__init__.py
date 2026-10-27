@@ -1,3 +1,3 @@
 """corsair-fanctl - fan curve control for the Corsair Commander Pro."""
 
-__version__ = "1.7.0"
+__version__ = "1.7.1"

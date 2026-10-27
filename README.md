@@ -2,7 +2,7 @@
 
 [![tests](https://github.com/rph81/corsair-fanctl/actions/workflows/test.yml/badge.svg)](https://github.com/rph81/corsair-fanctl/actions/workflows/test.yml)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![python: 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/)
+[![python: 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
 
 *Package and service name: `corsair-fanctl`*
 
@@ -38,7 +38,7 @@ it. Developed against an **HP Microsemi/Adaptec SmartHBA 2100-4i4e**.
 - A Proxmox VE 8 or 9 host (or any Debian/Ubuntu box) — PVE 9 ships Debian 13
   and kernel 6.14, PVE 8 ships Debian 12 and kernel 6.8. Both include the
   `corsair-cpro` driver this uses.
-- Python 3.9+. **No pip packages are required.** The daemon is pure standard
+- Python 3.11+. **No pip packages are required.** The daemon is pure standard
   library; `liquidctl` is optional and only used as a fallback.
 - The Commander Pro plugged into the host over USB.
 
